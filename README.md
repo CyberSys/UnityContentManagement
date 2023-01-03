@@ -24,15 +24,15 @@ ContentDatabase.LoadAsset<GameObject>("ClientUI", delegate (GameObject go)
 ![Alt-текст](https://raw.githubusercontent.com/redheadgektor/ContentManagement/main/ContentDatabase.png "...")
 > 1) All possible chains of loading bundles to get an asset
 > 2) All assets included to the database
-> 3) Bundle Nameing Mode
-> > Only GUID - the name of the bundles will correspond to a unique id with a file extension
+> 3) Bundle Naming Mode
+> > > Only GUID - the name of the bundles will correspond to a unique id with a file extension
 
-> > Only GUID Without Extension - The same thing but without the file extension
+> > > Only GUID Without Extension - The same thing but without the file extension
 
-> > Name Type - The name will match the name of the asset in the project with the addition of a type name (for example floor_Texture2D or Penis_GameObject)
+> > > Name Type - The name will match the name of the asset in the project with the addition of a type name (for example floor_Texture2D or Penis_GameObject)
 
-> > Name - The name will match the name of the asset in the project without adding a type name (_when duplicating names, the type name will be added_)
+> > > Name - The name will match the name of the asset in the project without adding a type name (_when duplicating names, the type name will be added_)
 
-> > Raw Path - The bundles will be arranged according to the location of the files in the project
+> > > Raw Path - The bundles will be arranged according to the location of the files in the project
 
 > 4) Does not include information about the unity version in bundles, slightly complicates the decompilation of bundles due to the difference in serialization from version to version
