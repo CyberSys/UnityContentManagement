@@ -34,25 +34,36 @@ class AssetInfoDrawer : PropertyDrawer
         EditorGUI.BeginProperty(position, label, property);
         EditorGUILayout.BeginHorizontal("box");
         GUILayout.Label(label);
-        GUILayout.BeginVertical("box"); 
-        
-        if (ContentDatabase.TryGetAssetInfoByGUID(info.guid, out info))
+        GUILayout.BeginVertical("box");
+
+        if (info != null)
         {
-            if (info.GetAsset<Object>())
+            if (ContentDatabase.TryGetAssetInfoByGUID(info.guid, out info))
             {
-                GUILayout.BeginHorizontal();
-                GUILayout.Box(AssetDatabase.GetCachedIcon(info.path), GUILayout.Width(48), GUILayout.Height(48));
-                EditorGUILayout.HelpBox($"Name: {info.name}\nPath: {info.path}\nGUID: {info.guid}\nType: {info.type}", MessageType.None, true);
-                GUILayout.EndHorizontal();
-                if (GUILayout.Button("Focus"))
+                if (info.GetAsset<Object>())
                 {
-                    EditorGUIUtility.PingObject(info.GetAsset<Object>());
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Box(AssetDatabase.GetCachedIcon(info.path), GUILayout.Width(48), GUILayout.Height(48));
+                    EditorGUILayout.HelpBox($"Name: {info.name}\nPath: {info.path}\nGUID: {info.guid}\nType: {info.type}", MessageType.None, true);
+                    GUILayout.EndHorizontal();
+                    if (GUILayout.Button("Focus"))
+                    {
+                        EditorGUIUtility.PingObject(info.GetAsset<Object>());
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox($"Can't find asset {info.name}", MessageType.Error, true);
                 }
             }
             else
             {
-                EditorGUILayout.HelpBox($"Asset isn't assigned!", MessageType.Warning, true);
+                EditorGUILayout.HelpBox($"Can't find asset {info.name}", MessageType.Error, true);
             }
+        }
+        else
+        {
+            EditorGUILayout.HelpBox($"Asset isn't assigned!", MessageType.Warning, true);
         }
         if (GUILayout.Button("Select Asset"))
         {
