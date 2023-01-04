@@ -10,7 +10,7 @@ I freaked out and wrote my asset loader in 2-3 hours
 ### To exclude an asset from the database
 ![Alt-текст](https://raw.githubusercontent.com/redheadgektor/ContentManagement/main/ExcludingAsset.png "...")
 
-### To load asset from bundles
+### To load asset from bundles (method 1)
 ```csharp
 ContentDatabase.LoadAsset<GameObject>("ClientUI", delegate (GameObject go)
 {
@@ -21,6 +21,11 @@ ContentDatabase.LoadAsset<GameObject>("ClientUI", delegate (GameObject go)
 });
 ```
 
+### To load asset from bundles (method 2)
+![Alt-текст](https://raw.githubusercontent.com/redheadgektor/ContentManagement/main/load_method1.png "...")
+
+
+### Description of the asset ContentDatabase.asset
 ![Alt-текст](https://raw.githubusercontent.com/redheadgektor/ContentManagement/main/ContentDatabase.png "...")
 > 1) All possible chains of loading bundles to get an asset
 > 2) All assets included to the database
