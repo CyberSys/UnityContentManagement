@@ -1,6 +1,8 @@
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.Build.Pipeline;
+using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
 #endif
 
 using System;
@@ -9,7 +11,12 @@ using System.IO;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
+#if UNITY_EDITOR
+public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithReport
+#endif
+#if !UNITY_EDITOR
 public partial class ContentDatabase : ScriptableObject
+#endif
 {
     public static string ContentFolder { get { return Path.Combine(Environment.CurrentDirectory, "Content"); } }
     public static string ContentDBPath { get { return Path.Combine(Environment.CurrentDirectory, "Content", "ContentDB.json"); } }
@@ -226,28 +233,62 @@ public partial class ContentDatabase : ScriptableObject
     public const string DBFolder = "Assets/ContentManagement/";
     public static string DBFile { get; private set; } = Path.Combine(DBFolder, "ContentDatabase.asset");
 
+#if UNITY_EDITOR
+    public static bool LoadFromJsonFile = false;
+#endif
+
     static ContentDatabase db;
     public static ContentDatabase Get()
     {
 #if UNITY_EDITOR
         if (!db)
         {
-            db = AssetDatabase.LoadAssetAtPath<ContentDatabase>(DBFile);
+            if (!LoadFromJsonFile)
+            {
+                db = AssetDatabase.LoadAssetAtPath<ContentDatabase>(DBFile);
 
-            if (!db)
+                if (!db)
+                {
+                    db = CreateInstance<ContentDatabase>();
+
+                    if (!Directory.Exists(DBFile))
+                    {
+                        Directory.CreateDirectory(DBFolder);
+                    }
+
+                    AssetDatabase.CreateAsset(db, DBFile);
+                    AssetDatabase.SaveAssetIfDirty(db);
+                }
+            }
+            else
             {
                 db = CreateInstance<ContentDatabase>();
-
-                if (!Directory.Exists(DBFile))
+                if (File.Exists(ContentDBPath))
                 {
-                    Directory.CreateDirectory(DBFolder);
+                    JsonUtility.FromJsonOverwrite(File.ReadAllText(ContentDBPath), db);
                 }
-
-                AssetDatabase.CreateAsset(db, DBFile);
-                AssetDatabase.SaveAssetIfDirty(db);
+                else
+                {
+                    Debug.LogError($"[ContentDatabase] {ContentDBPath} not found!");
+                }
             }
         }
 #endif
+#if !UNITY_EDITOR
+        if (!db)
+        {
+            db = CreateInstance<ContentDatabase>();
+            if (File.Exists(ContentDBPath))
+            {
+                JsonUtility.FromJsonOverwrite(File.ReadAllText(ContentDBPath), db);
+            }
+            else
+            {
+                Debug.LogError($"[ContentDatabase] {ContentDBPath} not found!");
+            }
+        }
+#endif
+
         db.hideFlags = HideFlags.None;
         return db;
     }
@@ -314,43 +355,52 @@ public partial class ContentDatabase : ScriptableObject
         guid = string.Empty;
         path = string.Empty;
 
-        if(asset != null && (asset.hideFlags & HideFlags.DontSave) != 0)
+        if (asset == null)
         {
-            return AssetError.IsUnsupportedType;
+            return AssetError.MissingAsset;
         }
-
-        if (asset is GameObject)
+        else
         {
-            return AssetError.IsSceneAsset;
-        }
 
-        if (asset.GetType() == typeof(MonoScript))
-        {
-            return AssetError.IsUnsupportedType;
-        }
-
-        if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out guid, out long localId))
-        {
-            path = AssetDatabase.GetAssetPath(asset);
-            type = AssetDatabase.GetMainAssetTypeAtPath(path);
-
-            if (!IsSupportedType(type))
+            if ((asset.hideFlags & HideFlags.DontSave) != 0)
             {
                 return AssetError.IsUnsupportedType;
             }
 
-            if (IsResource(path))
+            if (asset is GameObject)
             {
-                return AssetError.IsResourceAsset;
+                return AssetError.IsSceneAsset;
             }
 
-            if (IsEditor(path))
+            if (asset.GetType() == typeof(MonoScript))
             {
-                return AssetError.IsEditorAsset;
+                return AssetError.IsUnsupportedType;
             }
 
-            return AssetError.NoError;
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out guid, out long localId))
+            {
+                path = AssetDatabase.GetAssetPath(asset);
+                type = AssetDatabase.GetMainAssetTypeAtPath(path);
+
+                if (!IsSupportedType(type))
+                {
+                    return AssetError.IsUnsupportedType;
+                }
+
+                if (IsResource(path))
+                {
+                    return AssetError.IsResourceAsset;
+                }
+
+                if (IsEditor(path))
+                {
+                    return AssetError.IsEditorAsset;
+                }
+
+                return AssetError.NoError;
+            }
         }
+
         return AssetError.MissingAsset;
     }
 
@@ -556,6 +606,33 @@ public partial class ContentDatabase : ScriptableObject
         }
         return false;
     }
+
+    public static bool TryGetAssetInfoByGUID(string guid, out AssetInfo info, out int index)
+    {
+        index = -1;
+        info = null;
+        for (int i = 0; i < Assets; i++)
+        {
+            if (TryGetAssetInfo(i, out info))
+            {
+                if (info.guid.Contains(guid, StringComparison.OrdinalIgnoreCase))
+                {
+                    index = i;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+#if UNITY_EDITOR
+    int IOrderedCallback.callbackOrder => 0;
+
+    void IPostprocessBuildWithReport.OnPostprocessBuild(BuildReport report)
+    {
+
+    }
+#endif
 }
 
 #if UNITY_EDITOR
