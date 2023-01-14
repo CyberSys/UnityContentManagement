@@ -38,17 +38,27 @@ public class AssetInfo
 
     public enum Status
     {
+        BundleNotFound,
         BundleLoadingError,
         BundleLoading,
         BundleLoaded,
+        BundleReady,
 
+        DependencyNotFound,
+        DependencyLoadingError,
+        DependencyLoading,
+        DependencyLoaded,
+
+        AssetNotFound,
         AssetLoadingError,
         AssetLoading,
         AssetLoaded,
 
+        SceneNotFound,
+        SceneLoading,
+        SceneLoaded,
 
         InstantiatingError,
-        Instantiating,
         Instantiated
     }
 
@@ -63,7 +73,12 @@ public class AssetInfo
     }
 
 #if UNITY_EDITOR
-    public T GetAsset<T>() where T : Object
+    public bool HasAsset()
+    {
+        return AssetDatabase.GUIDToAssetPath(guid).Length > 0;
+    }
+
+    public T GetEditorAsset<T>() where T : Object
     {
         var assetPath = AssetDatabase.GUIDToAssetPath(guid);
         var asset = AssetDatabase.LoadAssetAtPath(assetPath, typeof(T));

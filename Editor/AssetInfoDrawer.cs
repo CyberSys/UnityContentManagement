@@ -38,27 +38,27 @@ class AssetInfoDrawer : PropertyDrawer
 
         if (info != null)
         {
-            if (ContentDatabase.TryGetAssetInfoByGUID(info.guid, out info))
+            if (ContentDatabase.TryGetAssetInfoByGUID(info.guid, out var info_from_db))
             {
-                if (info.GetAsset<Object>())
+                if (info_from_db.HasAsset())
                 {
                     GUILayout.BeginHorizontal();
-                    GUILayout.Box(AssetDatabase.GetCachedIcon(info.path), GUILayout.Width(48), GUILayout.Height(48));
-                    EditorGUILayout.HelpBox($"Name: {info.name}\nPath: {info.path}\nGUID: {info.guid}\nType: {info.type}", MessageType.None, true);
+                    GUILayout.Box(AssetDatabase.GetCachedIcon(info_from_db.path), GUILayout.Width(48), GUILayout.Height(48));
+                    EditorGUILayout.HelpBox($"Name: {info_from_db.name}\nPath: {info_from_db.path}\nGUID: {info_from_db.guid}\nType: {info_from_db.type}", MessageType.None, true);
                     GUILayout.EndHorizontal();
                     if (GUILayout.Button("Focus"))
                     {
-                        EditorGUIUtility.PingObject(info.GetAsset<Object>());
+                        EditorGUIUtility.PingObject(info_from_db.GetEditorAsset<Object>());
                     }
                 }
                 else
                 {
-                    EditorGUILayout.HelpBox($"Can't find asset {info.name}", MessageType.Error, true);
+                    EditorGUILayout.HelpBox($"Can't find asset {info_from_db.name}", MessageType.Error, true);
                 }
             }
             else
             {
-                EditorGUILayout.HelpBox($"Can't find asset {info.name}", MessageType.Error, true);
+                EditorGUILayout.HelpBox($"Can't find asset in database", MessageType.Error, true);
             }
         }
         else
@@ -67,7 +67,7 @@ class AssetInfoDrawer : PropertyDrawer
         }
         if (GUILayout.Button("Select Asset"))
         {
-            var popup = EditorWindow.GetWindow<AssetInfoPopup>(true, "Select Asset");
+            var popup = EditorWindow.GetWindow<AssetInfoPopup>(true, $"{label.text} | Browsing Assets");
             popup.SetDrawer(this);
         }
         GUILayout.EndVertical();
@@ -98,43 +98,50 @@ class AssetInfoPopup : EditorWindow
 
     private void OnGUI()
     {
-        Rect rect = position;
-
-        int border = 4;
-        int topPadding = 12;
-        int searchHeight = 20;
-        var searchRect = new Rect(border, topPadding, rect.width - border * 2, searchHeight);
-        var remainTop = topPadding + searchHeight + border;
-        var remainingRect = new Rect(border, topPadding + searchHeight + border, rect.width - border * 2, rect.height - remainTop - border);
-
-        if(m_SearchField == null)
+        if (ContentDatabase.Assets > 0)
         {
-            m_SearchField = new SearchField();
-            m_SearchField.SetFocus();
-            m_SearchField.downOrUpArrowKeyPressed += () => { m_Tree.SetFocus(); };
+            Rect rect = position;
+
+            int border = 4;
+            int topPadding = 12;
+            int searchHeight = 20;
+            var searchRect = new Rect(border, topPadding, rect.width - border * 2, searchHeight);
+            var remainTop = topPadding + searchHeight + border;
+            var remainingRect = new Rect(border, topPadding + searchHeight + border, rect.width - border * 2, rect.height - remainTop - border);
+
+            if (m_SearchField == null)
+            {
+                m_SearchField = new SearchField();
+                m_SearchField.SetFocus();
+                m_SearchField.downOrUpArrowKeyPressed += () => { m_Tree.SetFocus(); };
+            }
+
+            m_CurrentFindName = m_SearchField.OnGUI(searchRect, m_CurrentFindName);
+            if (m_Tree == null)
+            {
+                if (m_TreeState == null)
+                    m_TreeState = new TreeViewState();
+                m_Tree = new AssetInfoTreeView(m_TreeState, this);
+                m_Tree.Reload();
+            }
+
+            bool isKeyPressed = Event.current.type == EventType.KeyDown && Event.current.isKey;
+            bool isEnterKeyPressed = isKeyPressed && (Event.current.keyCode == KeyCode.KeypadEnter || Event.current.keyCode == KeyCode.Return);
+            bool isUpOrDownArrowPressed = isKeyPressed && (Event.current.keyCode == KeyCode.UpArrow || Event.current.keyCode == KeyCode.DownArrow);
+
+            m_Tree.searchString = m_CurrentFindName;
+            m_Tree.IsEnterKeyPressed = isEnterKeyPressed;
+            m_Tree.OnGUI(remainingRect);
+
+            if (m_ShouldClose || isEnterKeyPressed)
+            {
+                GUIUtility.hotControl = 0;
+                Close();
+            }
         }
-
-        m_CurrentFindName = m_SearchField.OnGUI(searchRect, m_CurrentFindName);
-        if (m_Tree == null)
+        else
         {
-            if (m_TreeState == null)
-                m_TreeState = new TreeViewState();
-            m_Tree = new AssetInfoTreeView(m_TreeState, this);
-            m_Tree.Reload();
-        }
-
-        bool isKeyPressed = Event.current.type == EventType.KeyDown && Event.current.isKey;
-        bool isEnterKeyPressed = isKeyPressed && (Event.current.keyCode == KeyCode.KeypadEnter || Event.current.keyCode == KeyCode.Return);
-        bool isUpOrDownArrowPressed = isKeyPressed && (Event.current.keyCode == KeyCode.UpArrow || Event.current.keyCode == KeyCode.DownArrow);
-
-        m_Tree.searchString = m_CurrentFindName;
-        m_Tree.IsEnterKeyPressed = isEnterKeyPressed;
-        m_Tree.OnGUI(remainingRect);
-
-        if (m_ShouldClose || isEnterKeyPressed)
-        {
-            GUIUtility.hotControl = 0;
-            Close();
+            EditorGUILayout.HelpBox("Not assets in Content Database!", MessageType.Warning, true);
         }
     }
 }
@@ -143,12 +150,13 @@ sealed class AssetInfoTreeViewItem : TreeViewItem
 {
     public AssetInfo info;
 
-    public AssetInfoTreeViewItem(AssetInfo info)
-        : base(info.GetHashCode(), 0, info.name)
+    public AssetInfoTreeViewItem(AssetInfo info) : base(info.GetHashCode(), 0, info.name)
     {
         this.info = info;
         icon = AssetDatabase.GetCachedIcon(info.path) as Texture2D;
     }
+
+    public AssetInfoTreeViewItem() : base(0, 0, "None") { info = new AssetInfo(); }
 }
 
 class AssetInfoTreeView : TreeView
@@ -179,9 +187,11 @@ class AssetInfoTreeView : TreeView
     {
         var assetInfoItem = FindItem(id, rootItem) as AssetInfoTreeViewItem;
         popup.drawer.fieldInfo.SetValue(popup.drawer.assetProperty.serializedObject.targetObject, assetInfoItem.info);
+        popup.drawer.info = assetInfoItem.info;
         popup.drawer.assetProperty.serializedObject.ApplyModifiedProperties();
         popup.drawer.assetProperty.serializedObject.Update();
         EditorUtility.SetDirty(popup.drawer.assetProperty.serializedObject.targetObject);
+        AssetDatabase.SaveAssetIfDirty(popup.drawer.assetProperty.serializedObject.targetObject);
         popup.ForceClose();
     }
 
@@ -191,9 +201,11 @@ class AssetInfoTreeView : TreeView
         {
             var assetInfoItem = FindItem(selectedIds[0], rootItem) as AssetInfoTreeViewItem;
             popup.drawer.fieldInfo.SetValue(popup.drawer.assetProperty.serializedObject.targetObject, assetInfoItem.info);
+            popup.drawer.info = assetInfoItem.info;
             popup.drawer.assetProperty.serializedObject.ApplyModifiedProperties();
             popup.drawer.assetProperty.serializedObject.Update();
             EditorUtility.SetDirty(popup.drawer.assetProperty.serializedObject.targetObject);
+            AssetDatabase.SaveAssetIfDirty(popup.drawer.assetProperty.serializedObject.targetObject);
             SetFocus();
         }
     }
@@ -202,6 +214,7 @@ class AssetInfoTreeView : TreeView
     {
         var root = new TreeViewItem(-1, -1);
 
+        root.AddChild(new AssetInfoTreeViewItem());
         for(int i = 0; i < ContentDatabase.Assets;i++)
         {
             var info = ContentDatabase.Get()[i];

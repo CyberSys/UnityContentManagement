@@ -3,324 +3,424 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using static AssetInfo;
 using Object = UnityEngine.Object;
 
 public partial class ContentDatabase : ScriptableObject
 {
     /* Asset */
-    public static void LoadAsset<T>(string name, Action<Status, string, float, T> onState = null) where T : Object
+    public static void LoadAsset<T>(AssetInfo assetInfo, Action<Status, string, float, T> Event) where T : Object
     {
-        if (TryGetAssetInfoByName(name, out var info))
+        ContentDatabaseQueue.PushToQueue(Coroutine_LoadBundle(assetInfo,
+        delegate (Status status, string name, float progress, AssetBundle bundle, BundleInfo chain)
         {
-            ContentDatabaseProxy.RunCoroutine(Coroutine_TryLoadAsset(info, onState));
-        }
-    }
-
-    public static void LoadAsset<T>(AssetInfo info, Action<Status, string, float, T> onState = null) where T : Object
-    {
-        ContentDatabaseProxy.RunCoroutine(Coroutine_TryLoadAsset(info, onState));
-    }
-
-    public static void LoadAsset(AssetInfo info, Action<Status, string, float, Object> onState = null)
-    {
-        ContentDatabaseProxy.RunCoroutine(Coroutine_TryLoadAsset(info, onState));
-    }
-
-
-    /* Instantiate */
-    public static void Instantiate<T>(string name, Action<Status, string, float, T> onState = null) where T : Object
-    {
-        if (TryGetAssetInfoByName(name, out var info))
-        {
-            ContentDatabaseProxy.RunCoroutine(Coroutine_TryInstantiateAsset(info, onState));
-        }
-    }
-
-    public static void Instantiate<T>(AssetInfo info, Action<Status, string, float, T> onState = null) where T : Object
-    {
-        ContentDatabaseProxy.RunCoroutine(Coroutine_TryInstantiateAsset(info, onState));
-    }
-
-    public static void Instantiate(AssetInfo info, Action<Status, string, float, Object> onState = null)
-    {
-        ContentDatabaseProxy.RunCoroutine(Coroutine_TryInstantiateAsset(info, onState));
-    }
-
-    static IEnumerator Coroutine_TryLoadAsset<T>(AssetInfo assetInfo, Action<Status, string, float, T> onState = null) where T : Object
-    {
-        Dictionary<DependencyInfo, AssetBundle> bundles = new Dictionary<DependencyInfo, AssetBundle>();
-
-        IEnumerator _LoadBundle(DependencyInfo info)
-        {
-            if (bundles.ContainsKey(info))
+            if (status != Status.BundleReady)
             {
-                Debug.LogWarning($"Skipping bundle {info.BundleName}");
-                yield break;
-            }
-
-            var path = Path.Combine(ContentFolder, info.BundleName);
-
-            if (File.Exists(path))
-            {
-                var operation = AssetBundle.LoadFromFileAsync(path);
-
-                if (operation != null)
+                try
                 {
-                    while (!operation.isDone)
-                    {
-                        Debug.Log($"Load bundle {path} | {(int)(operation.progress * 100f)} %");
-
-                        if (onState != null)
-                        {
-                            onState(Status.BundleLoading, info.BundleName, operation.progress * 100f, null);
-                        }
-
-                        yield return null;
-                    }
-
-                    bundles.Add(info, operation.assetBundle);
-
-                    if (onState != null)
-                    {
-                        onState(Status.BundleLoaded, info.BundleName, operation.progress * 100f, null);
-                    }
+                    Event(status, name, progress, null);
                 }
-                else
-                {
-                    Debug.LogWarning($"Loading bundle operation failed! -> {path} | Bundle is corrupted!");
+                catch { }
+            }
+            else if (status == Status.BundleReady)
+            {
+                ContentDatabaseQueue.PushToQueue(Coroutine_LoadAsset(assetInfo, chain, bundle, Event));
+            }
+        }));
+    }
 
-                    if (onState != null)
+    public static void LoadAsset<T>(string name, Action<Status, string, float, T> Event) where T : Object
+    {
+        if (TryGetAssetInfoByName(name, out var info))
+        {
+            LoadAsset<T>(info, Event);
+        }
+        else
+        {
+            try
+            {
+                Event(Status.AssetNotFound, name, 0, null);
+            }
+            catch { }
+        }
+    }
+
+    public static void LoadAsset(AssetInfo assetInfo, Action<Status, string, float, Object> Event)
+    {
+        LoadAsset<Object>(assetInfo, Event);
+    }
+
+    public static void Instantiate<T>(AssetInfo info, Action<Status, string, float, T> Event) where T : Object
+    {
+        LoadAsset<T>(info, delegate (Status status, string asset_name, float progress, T asset)
+        {
+            if (status != Status.AssetLoaded)
+            {
+                try
+                {
+                    Event(status, asset_name, progress, asset);
+                }
+                catch { }
+            }
+            else if (status == Status.AssetLoaded)
+            {
+                try
+                {
+                    Event(Status.Instantiated, info.name, progress, Instantiate(asset));
+                }
+                catch { Event(Status.InstantiatingError, info.name, progress, asset); }
+            }
+        });
+    }
+
+    public static void Instantiate<T>(string name, Action<Status, string, float, T> Event) where T : Object
+    {
+        if (TryGetAssetInfoByName(name, out var assetInfo))
+        {
+            Instantiate<T>(assetInfo, Event);
+        }
+    }
+
+    public static void Instantiate(AssetInfo info, Action<Status, string, float, Object> Event)
+    {
+        Instantiate<Object>(info, Event);
+    }
+
+    public static void LoadScene(string name, Action<Status, string, float> Event, LoadSceneMode mode = LoadSceneMode.Single, bool activateOnLoad = true)
+    {
+        if (TryGetAssetInfoByName(name, out var info))
+        {
+            ContentDatabaseQueue.PushToQueue(Coroutine_LoadBundle(info,
+            delegate (Status status, string name, float progress, AssetBundle bundle, BundleInfo chain)
+            {
+            if (status != Status.BundleReady)
+            {
+                try
+                {
+                    Event(status, name, progress);
+                }
+                catch { }
+            }
+            else if (status == Status.BundleReady)
+            {
+                ContentDatabaseQueue.PushToQueue(Coroutine_LoadScene(info, chain,bundle, Event, mode, activateOnLoad));
+            }
+        }));
+        }
+        else
+        {
+            try
+            {
+                Event(Status.SceneNotFound, name, 0);
+            }
+            catch { }
+        }
+    }
+
+    static bool IsBundleLoaded(string name, out AssetBundle bundle)
+    {
+        bundle = null;
+        foreach (var i in AssetBundle.GetAllLoadedAssetBundles())
+        {
+            if (i.name == name)
+            {
+                bundle = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public class LoadedAssetBundle
+    {
+        public string Name { get; private set; }
+        public AssetBundle AssetBundle { get; private set; }
+        public uint ReferenceCount { get; private set; }
+
+        public void IncreaseReferences()
+        {
+            ReferenceCount++;
+        }
+
+        public void DecreaseReferences()
+        {
+            ReferenceCount--;
+        }
+
+        public LoadedAssetBundle(string name, AssetBundle bundle)
+        {
+            Name = name;
+            AssetBundle = bundle;
+            ReferenceCount = 1;
+        }
+    }
+
+    public Dictionary<BundleInfo, LoadedAssetBundle> loadedAssetBundles = new Dictionary<BundleInfo, LoadedAssetBundle>();
+
+    public static IEnumerator Coroutine_LoadBundle(AssetInfo info, Action<Status, string, float, AssetBundle, BundleInfo> Event)
+    {
+        //build dependencies order of main bundle
+        var deps_order = new List<BundleInfo>();
+
+        BundleInfo chain;
+        if (Get().TryGetChain(info.guid, out chain))
+        {
+            deps_order.AddRange(chain.Dependencies);
+        }
+        else
+        {
+            Log($"Can't find chain {info.guid}");
+            yield break;
+        }
+
+        //load main bundle
+        AssetBundle main_bundle = null;
+        var main_bundle_path = Path.Combine(ContentFolder, chain.Name);
+        if (File.Exists(main_bundle_path))
+        {
+            Log($"Bundle {main_bundle_path} found!");
+            var operation = AssetBundle.LoadFromFileAsync(main_bundle_path);
+
+            if (operation != null)
+            {
+                while (!operation.isDone)
+                {
+                    Log($"Loading {main_bundle_path} | {(int)(operation.progress * 100f)}%");
+                    try
                     {
-                        onState(Status.BundleLoadingError, info.BundleName, 0, null);
+                        Event(Status.BundleLoading, chain.Name, operation.progress, null, chain);
                     }
+                    catch { }
+                    yield return null;
+                }
+
+                if (operation.isDone)
+                {
+                    Log($"Loading {main_bundle_path} finished");
+
+                    main_bundle = operation.assetBundle;
+                    Get().loadedAssetBundles.Add(chain, new LoadedAssetBundle(chain.Name, main_bundle));
+                    try
+                    {
+                        Event(Status.BundleLoaded, chain.Name, operation.progress, main_bundle, chain);
+                    }
+                    catch { }
                 }
             }
             else
             {
-                Debug.LogWarning($"File {path} not found!");
-
-                if (onState != null)
+                LogError($"Bundle {main_bundle_path} loading error!");
+                try
                 {
-                    onState(Status.BundleLoadingError, info.BundleName, 0, null);
+                    Event(Status.BundleLoadingError, chain.Name, 0, null, chain);
                 }
-            }
-        }
-
-        IEnumerator _LoadDependencies(DependencyInfo info)
-        {
-            yield return _LoadBundle(info);
-            for (int i = 0; i < info.Dependencies.Count; i++)
-            {
-                yield return _LoadDependencies(info.Dependencies[i]);
-            }
-        }
-
-        DependencyInfo target = null;
-
-        for (int i = 0; i < Get().m_Chains.Count; i++)
-        {
-            if (Get().m_Chains[i].AssetInfo.name == assetInfo.name &&
-                Get().m_Chains[i].AssetInfo.guid == assetInfo.guid &&
-                (Get().m_Chains[i].AssetInfo.type == assetInfo.type ||
-                Get().m_Chains[i].AssetInfo.base_type == assetInfo.base_type)
-                )
-            {
-                target = Get().m_Chains[i];
-                yield return _LoadDependencies(Get().m_Chains[i]);
-            }
-        }
-
-        if (target != null && bundles.ContainsKey(target))
-        {
-            if (onState != null)
-            {
-                var operation = bundles[target].LoadAssetAsync<T>(target.AssetInfo.guid);
-                if (operation != null)
-                {
-                    while (!operation.isDone)
-                    {
-                        Debug.Log($"Load asset {target.AssetInfo.name} from bundle {target.BundleName} | {(int)(operation.progress * 100f)}%");
-                        onState(Status.AssetLoading, target.AssetInfo.name, operation.progress * 100f, null);
-                        yield return null;
-                    }
-
-                    onState(Status.AssetLoaded, target.AssetInfo.name, 100f, (T)operation.asset);
-                }
-                else
-                {
-                    onState(Status.AssetLoadingError, target.AssetInfo.name, 0, null);
-                }
+                catch { }
+                yield break;
             }
         }
         else
         {
-            if (onState != null)
+            LogError($"Bundle {main_bundle_path} not found!");
+            try
             {
-                onState(Status.AssetLoadingError, target.AssetInfo.name, 0, null);
+                Event(Status.BundleNotFound, chain.Name, 0, null, chain);
             }
+            catch { }
+            yield break;
         }
 
-        //unload all
-        foreach (var kvp in bundles)
+        int dependency_missing = 0;
+        int dependency_loaded = 0;
+        int dependency_count = deps_order.Count;
+
+        Log($"Tracking {dependency_count} dependencies for {chain.Name}");
+
+        for (int i = 0; i < dependency_count; i++)
         {
-            var operation = kvp.Value.UnloadAsync(false);
-            if (operation != null)
+            var depedency_chain = deps_order[i];
+            var dependency_path = Path.Combine(ContentFolder, depedency_chain.Name);
+            if (File.Exists(dependency_path))
             {
-                while (!operation.isDone)
-                {
-                    Debug.Log($"Unloading bundle {kvp.Key.BundleName}");
-                    yield return null;
-                }
-            }
-        }
-
-        yield return null;
-    }
-
-    static IEnumerator Coroutine_TryInstantiateAsset<T>(AssetInfo assetInfo, Action<Status, string, float, T> onState = null) where T : Object
-    {
-        Dictionary<DependencyInfo, AssetBundle> bundles = new Dictionary<DependencyInfo, AssetBundle>();
-
-        IEnumerator _LoadBundle(DependencyInfo info)
-        {
-            if (bundles.ContainsKey(info))
-            {
-                Debug.LogWarning($"Skipping bundle {info.BundleName}");
-                yield break;
-            }
-
-            var path = Path.Combine(ContentFolder, info.BundleName);
-
-            if (File.Exists(path))
-            {
-                var operation = AssetBundle.LoadFromFileAsync(path);
+                Log($"Dependency {dependency_path} of {chain.Name} found!");
+                var operation = AssetBundle.LoadFromFileAsync(dependency_path);
 
                 if (operation != null)
                 {
                     while (!operation.isDone)
                     {
-                        Debug.Log($"Load bundle {path} | {(int)(operation.progress * 100f)} %");
-
-                        if (onState != null)
+                        Log($"Loading {dependency_path} dependency of {chain.Name} | {(int)(operation.progress * 100f)}%");
+                        try
                         {
-                            onState(Status.BundleLoading, info.BundleName, operation.progress * 100f, null);
+                            Event(Status.DependencyLoading, depedency_chain.Name, operation.progress, null, depedency_chain);
                         }
-
+                        catch { }
                         yield return null;
                     }
 
-                    bundles.Add(info, operation.assetBundle);
-
-                    if (onState != null)
+                    if (operation.isDone)
                     {
-                        onState(Status.BundleLoaded, info.BundleName, operation.progress * 100f, null);
+                        dependency_loaded++;
+                        Log($"Loading {dependency_path} dependency of {chain.Name} finished");
+
+                        Get().loadedAssetBundles.Add(depedency_chain, new LoadedAssetBundle(depedency_chain.Name, operation.assetBundle));
+
+                        try
+                        {
+                            Event(Status.DependencyLoaded, depedency_chain.Name, operation.progress, operation.assetBundle, depedency_chain);
+                        }
+                        catch { }
                     }
                 }
                 else
                 {
-                    Debug.LogWarning($"Loading bundle operation failed! -> {path} | Bundle is corrupted!");
+                    LogError($"Dependency {dependency_path} of {chain.Name} loading error!");
 
-                    if (onState != null)
+                    try
                     {
-                        onState(Status.BundleLoadingError, info.BundleName, 0, null);
+                        Event(Status.DependencyLoadingError, depedency_chain.Name, 0, null, depedency_chain);
                     }
+                    catch { }
                 }
             }
             else
             {
-                Debug.LogWarning($"File {path} not found!");
-
-                if (onState != null)
-                {
-                    onState(Status.BundleLoadingError, info.BundleName, 0, null);
-                }
-            }
-        }
-
-        IEnumerator _LoadDependencies(DependencyInfo info)
-        {
-            yield return _LoadBundle(info);
-            for (int i = 0; i < info.Dependencies.Count; i++)
-            {
-                yield return _LoadDependencies(info.Dependencies[i]);
-            }
-        }
-
-        DependencyInfo target = null;
-
-        for (int i = 0; i < Get().m_Chains.Count; i++)
-        {
-            if (Get().m_Chains[i].AssetInfo.name == assetInfo.name &&
-                Get().m_Chains[i].AssetInfo.guid == assetInfo.guid &&
-                (Get().m_Chains[i].AssetInfo.type == assetInfo.type ||
-                Get().m_Chains[i].AssetInfo.base_type == assetInfo.base_type)
-                )
-            {
-                target = Get().m_Chains[i];
-                yield return _LoadDependencies(Get().m_Chains[i]);
-            }
-        }
-
-        if (target != null && bundles.ContainsKey(target))
-        {
-            var operation = bundles[target].LoadAssetAsync<T>(target.AssetInfo.guid);
-            if (operation != null)
-            {
-                while (!operation.isDone)
-                {
-                    Debug.Log($"Instantiating asset {target.AssetInfo.name} from bundle {target.BundleName} | {(int)(operation.progress * 100f)}%");
-
-                    if (onState != null)
-                    {
-                        onState(Status.Instantiating, target.AssetInfo.name, operation.progress * 100f, null);
-                    }
-                    yield return null;
-                }
+                dependency_missing++;
+                LogError($"Dependency {dependency_path} of {chain.Name} not found!");
 
                 try
                 {
-                    T obj = Instantiate((T)operation.asset);
+                    Event(Status.DependencyNotFound, depedency_chain.Name, 0, null, depedency_chain);
+                }
+                catch { }
+            }
+        }
 
-                    if (onState != null)
+        LogWarning($"Bundle {chain.Name} ready! [Dependencies Loaded: {dependency_loaded}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}]");
+
+        try
+        {
+            Event(Status.BundleReady, chain.Name, 1, main_bundle, chain);
+        }
+        catch { }
+
+        yield break;
+    }
+
+    static IEnumerator Coroutine_LoadAsset<T>(AssetInfo assetInfo, BundleInfo info, AssetBundle bundle, Action<Status, string, float, T> Event) where T : Object
+    {
+        if (bundle.isStreamedSceneAssetBundle)
+        {
+            LogError($"Can't load asset {assetInfo.name}! Bundle {bundle.name} only for load scenes!");
+            try
+            {
+                Event(Status.AssetLoadingError, assetInfo.name, 0, null);
+            }
+            catch { }
+            yield break;
+        }
+        foreach (var guid in bundle.GetAllAssetNames())
+        {
+            if (guid == assetInfo.guid)
+            {
+                var operation = bundle.LoadAssetAsync<T>(guid);
+
+                if (operation != null)
+                {
+                    while (!operation.isDone)
                     {
-                        onState(Status.Instantiated, target.AssetInfo.name, 100f, obj);
+                        Log($"Loading asset {assetInfo.name} from bundle {info.Name} | {(int)(operation.progress * 100f)}%");
+                        try
+                        {
+                            Event(Status.AssetLoading, assetInfo.name, operation.progress, null);
+                        }
+                        catch { }
+                        yield return null;
+                    }
+
+                    if (operation.isDone)
+                    {
+                        Log($"Loading asset {assetInfo.name} from bundle {info.Name} finished!");
+
+                        try
+                        {
+                            Event(Status.AssetLoaded, assetInfo.name, operation.progress, (T)operation.asset);
+                        }
+                        catch { }
                     }
                 }
-                catch(Exception ex)
-                {
-                    Debug.LogException(ex);
 
-                    if (onState != null)
+                yield break;
+            }
+        }
+
+        Log($"Asset {assetInfo.name} not found in bundle {info.Name}");
+
+        try
+        {
+            Event(Status.AssetNotFound, assetInfo.name, 0, null);
+        }
+        catch { }
+
+        yield break;
+    }
+
+    static IEnumerator Coroutine_LoadScene(AssetInfo assetInfo, BundleInfo info, AssetBundle bundle, Action<Status, string, float> Event, LoadSceneMode mode = LoadSceneMode.Single, bool activateOnLoad = true)
+    {
+        if (!bundle.isStreamedSceneAssetBundle)
+        {
+            LogError($"Can't load scene {assetInfo.name}! Bundle {info.Name} only for load assets!");
+            try
+            {
+                Event(Status.AssetLoadingError, assetInfo.name, 0);
+            }
+            catch { }
+            yield break;
+        }
+        foreach (var guid in bundle.GetAllScenePaths())
+        {
+            if (guid == assetInfo.guid)
+            {
+                var operation = SceneManager.LoadSceneAsync(guid, mode);
+
+                if (operation != null)
+                {
+                    while (!operation.isDone)
                     {
-                        onState(Status.InstantiatingError, ex.Message, 0, null);
+                        Log($"Loading scene {assetInfo.name} from bundle {info.Name} | {(int)(operation.progress * 100f)}%");
+                        try
+                        {
+                            Event(Status.SceneLoading, assetInfo.name, operation.progress);
+                        }
+                        catch { }
+                        yield return null;
+                    }
+
+                    if (operation.isDone)
+                    {
+                        Log($"Loading scene {assetInfo.name} from bundle {info.Name} finished!");
+
+                        try
+                        {
+                            Event(Status.SceneLoaded, assetInfo.name, operation.progress);
+                        }
+                        catch { }
                     }
                 }
-            }
-            else if (onState != null)
-            {
-                onState(Status.InstantiatingError, target.AssetInfo.name, 0, null);
-            }
-        }
-        else if (onState != null)
-        {
-            onState(Status.InstantiatingError, target.AssetInfo.name, 0, null);
-        }
 
-        //unload all
-        foreach (var kvp in bundles)
-        {
-            var operation = kvp.Value.UnloadAsync(false);
-            if (operation != null)
-            {
-                while (!operation.isDone)
-                {
-                    Debug.Log($"Unloading bundle {kvp.Key.BundleName}");
-                    yield return null;
-                }
+                yield break;
             }
         }
 
-        yield return null;
+        Log($"Scene {assetInfo.name} not found in bundle {info.Name}");
+
+        try
+        {
+            Event(Status.SceneNotFound, assetInfo.name, 0);
+        }
+        catch { }
+
+        yield break;
     }
 }

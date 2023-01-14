@@ -32,19 +32,21 @@ public static class AssetInspectorGUI
             return;
         }
 
-        if ((PrefabStageUtility.GetCurrentPrefabStage() != null && PrefabStageUtility.GetCurrentPrefabStage().mode == PrefabStage.Mode.InIsolation))
+        bool has_asset = ContentDatabase.Contains(selectedObject, out var info);
+
+        if ((PrefabStageUtility.GetCurrentPrefabStage() != null && PrefabStageUtility.GetCurrentPrefabStage().mode == PrefabStage.Mode.InIsolation && PrefabStageUtility.GetCurrentPrefabStage().assetPath == info.path))
         {
             EditorGUILayout.HelpBox(s_IsolationText.text, MessageType.Warning, true);
             return;
         }
 
-        bool has_asset = ContentDatabase.Contains(selectedObject, out var info);
         var asset_name = Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(selectedObject));
 
         GUILayout.BeginVertical();
 
         if (has_asset)
         {
+            ContentDatabase.UpdateAsset(selectedObject);
             if (GUILayout.Button($"Exclude {asset_name} from Content Database"))
             {
                 ContentDatabase.RemoveAsset(selectedObject);

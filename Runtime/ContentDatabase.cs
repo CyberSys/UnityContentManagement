@@ -42,8 +42,7 @@ public partial class ContentDatabase : ScriptableObject
         OnlyGUID,
         OnlyGUIDWithoutExtension,
         Name_Type,
-        Name,
-        RawPath
+        Name
     }
 
 #pragma warning disable CS0414
@@ -51,14 +50,25 @@ public partial class ContentDatabase : ScriptableObject
     private BundlePlaceMode bundleNameMode = BundlePlaceMode.Name_Type;
 #pragma warning restore CS0414
 
+    [Header("Show loading progress in console/logs")]
+    [SerializeField]
+    private bool Logging = true;
+
     /* BUILDING */
 #if UNITY_EDITOR
+    [Header("Force Rebuilding")]
+    [SerializeField]
+    private bool ForceRebuild = true;
+    [Header("Don't use compression")]
     [SerializeField]
     private bool Uncompressed = true;
+    [Header("Don't write engine version")]
     [SerializeField]
     private bool StripUnityVersion = false;
+    [Header("Remove .manifest")]
     [SerializeField]
     private bool RemoveManifest = false;
+    [Header("Clear the content directory before building")]
     [SerializeField]
     private bool ClearContentDirectory = false;
 
@@ -101,6 +111,12 @@ public partial class ContentDatabase : ScriptableObject
 #endif
     }
 
+    [ContextMenu("Reset")]
+    void blob1()
+    {
+
+    }
+
     [ContextMenu("BuildContent")]
     public void BuildContent()
     {
@@ -116,35 +132,51 @@ public partial class ContentDatabase : ScriptableObject
             var bundle = new AssetBundleBuild();
             bundle.assetBundleName = db[i].guid;
             {
+                string ext = Extension;
+
+                if (ext.Length == 0)
+                {
+                    ext = ".unity";
+                }
+                else if (ext.Length >= 8)
+                {
+                    ext = ext.Substring(0, 8);
+                }
+
                 if (bundleNameMode == BundlePlaceMode.Name_Type)
                 {
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].type}.{Extension}");
+                    string s_t = db[i].type;
+                    string b_t = db[i].base_type;
+
+                    if (s_t == nameof(GameObject))
+                    {
+                        s_t = "Object";
+                    }
+
+                    if (b_t == nameof(ScriptableObject))
+                    {
+                        s_t = "Scriptable";
+                    }
+
+                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{s_t}.{ext}");
                 }
 
                 if (bundleNameMode == BundlePlaceMode.OnlyGUID)
                 {
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}.{Extension}");
+                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}.{ext}");
                 }
 
                 if (bundleNameMode == BundlePlaceMode.OnlyGUIDWithoutExtension)
                 {
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}");
+                    temp_GUID_AssetBundleName.Add(db[i].guid, db[i].guid);
                 }
+
 
                 if (bundleNameMode == BundlePlaceMode.Name)
                 {
-                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].guid, $"{db[i].name}.{Extension}"))
+                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].guid, $"{db[i].name}.{ext}"))
                     {
-                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].type}.{Extension}");
-                    }
-                }
-
-                if (bundleNameMode == BundlePlaceMode.RawPath)
-                {
-                    bundle.assetBundleName = $"{db[i].path}";
-                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].path, $"{db[i].path}"))
-                    {
-
+                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].guid}.{ext}");
                     }
                 }
             }
@@ -181,16 +213,21 @@ public partial class ContentDatabase : ScriptableObject
             bopt |= BuildAssetBundleOptions.AssetBundleStripUnityVersion;
         }
 
+        if (ForceRebuild)
+        {
+            bopt |= BuildAssetBundleOptions.ForceRebuildAssetBundle;
+        }
+
         var manifest = CompatibilityBuildPipeline.BuildAssetBundles(ContentFolder, bundles.ToArray(), bopt, buildTarget);
 
         if (manifest != null)
         {
             //Building chains
-            GenerateDependencyChains(manifest);
+            GenerateChains(manifest);
 
-            if (bundleNameMode != BundlePlaceMode.RawPath)
+            //moving files
+            if (Get().bundleNameMode == BundlePlaceMode.Name || Get().bundleNameMode == BundlePlaceMode.Name_Type)
             {
-                //Renaming
                 foreach (var dictionary in temp_GUID_AssetBundleName)
                 {
                     var file_path = Path.Combine(ContentFolder, dictionary.Key);
@@ -305,6 +342,7 @@ public partial class ContentDatabase : ScriptableObject
 #if UNITY_EDITOR
     public enum AssetError
     {
+        Unknown,
         NoError,
         IsResourceAsset,
         IsUnsupportedType,
@@ -327,7 +365,8 @@ public partial class ContentDatabase : ScriptableObject
         typeof(PhysicMaterial),
         typeof(TextAsset),
         typeof(ScriptableObject),
-        typeof(SceneAsset)
+        typeof(SceneAsset),
+        typeof(Object)
     };
 
     public static bool IsSupportedType(Type type)
@@ -361,7 +400,6 @@ public partial class ContentDatabase : ScriptableObject
         }
         else
         {
-
             if ((asset.hideFlags & HideFlags.DontSave) != 0)
             {
                 return AssetError.IsUnsupportedType;
@@ -369,7 +407,12 @@ public partial class ContentDatabase : ScriptableObject
 
             if (asset is GameObject)
             {
-                return AssetError.IsSceneAsset;
+                var go = asset as GameObject;
+
+                if (go.scene.IsValid())
+                {
+                    return AssetError.IsSceneAsset;
+                }
             }
 
             if (asset.GetType() == typeof(MonoScript))
@@ -401,7 +444,7 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
-        return AssetError.MissingAsset;
+        return AssetError.Unknown;
     }
 
     /* Object */
@@ -433,6 +476,26 @@ public partial class ContentDatabase : ScriptableObject
         {
             return AssetError.IsAlreadyContainsAsset;
         }
+    }
+
+    public static AssetError UpdateAsset(Object asset)
+    {
+        var error = Get().CheckAsset(asset, out string guid, out string path, out Type type);
+        if (error != AssetError.NoError)
+        {
+            return error;
+        }
+
+        if(TryGetAssetInfo(asset, out var info))
+        {
+            info.name = Path.GetFileNameWithoutExtension(path);
+            info.guid = guid;
+            info.path = path;
+            info.base_type = type.BaseType.Name;
+            info.type = type.Name;
+        }
+
+        return AssetError.NoError;
     }
 
     public static void RemoveAsset(Object asset)
@@ -543,6 +606,23 @@ public partial class ContentDatabase : ScriptableObject
         return false;
     }
 
+#if UNITY_EDITOR
+    public static bool TryGetAssetInfo(Object asset, out AssetInfo info)
+    {
+        info = null;
+
+        if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string guid, out long blob))
+        {
+            if(TryGetAssetInfoByGUID(guid, out info))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+#endif
+
     public static bool TryGetAssetInfoByName(string name, out AssetInfo info, StringComparison stringComparison = StringComparison.Ordinal)
     {
         info = null;
@@ -566,7 +646,7 @@ public partial class ContentDatabase : ScriptableObject
         {
             if (TryGetAssetInfo(i, out info))
             {
-                if (info.name.Contains(name, stringComparison) && info.type.Contains(type.Name, stringComparison))
+                if (info.name == name && info.type == type.Name)
                 {
                     return true;
                 }
@@ -598,7 +678,7 @@ public partial class ContentDatabase : ScriptableObject
         {
             if (TryGetAssetInfo(i, out info))
             {
-                if (info.guid.Contains(guid, StringComparison.OrdinalIgnoreCase))
+                if (info.guid == guid)
                 {
                     return true;
                 }
@@ -615,7 +695,7 @@ public partial class ContentDatabase : ScriptableObject
         {
             if (TryGetAssetInfo(i, out info))
             {
-                if (info.guid.Contains(guid, StringComparison.OrdinalIgnoreCase))
+                if (info.guid == guid)
                 {
                     index = i;
                     return true;
@@ -635,17 +715,50 @@ public partial class ContentDatabase : ScriptableObject
 #endif
 }
 
-#if UNITY_EDITOR
-class ContentDatabasePostProcess : UnityEditor.AssetPostprocessor
-{
 
+#if UNITY_EDITOR
+public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithReport
+#endif
+#if !UNITY_EDITOR
+public partial class ContentDatabase : ScriptableObject
+#endif
+{
+    public static void Log(string text)
+    {
+        if (!Get().Logging)
+            return;
+
+        Debug.Log($"[{nameof(ContentDatabase)}] {text}", Get());
+    }
+
+    public static void LogWarning(string text)
+    {
+        if (!Get().Logging)
+            return;
+
+        Debug.LogWarning($"[{nameof(ContentDatabase)}] {text}", Get());
+    }
+
+    public static void LogError(string text)
+    {
+        if (!Get().Logging)
+            return;
+
+        Debug.LogError($"[{nameof(ContentDatabase)}] {text}", Get());
+    }
+}
+
+#if UNITY_EDITOR
+class ContentDatabasePostProcess : AssetPostprocessor
+{
     static void MoveAssets(string asset_guid, string oldPath, string newPath)
     {
         if (ContentDatabase.TryGetAssetInfoByGUID(asset_guid, out var info))
         {
-            if(ContentDatabase.Get().CheckAsset(
-                AssetDatabase.LoadAssetAtPath(newPath, Type.GetType(info.type)), out var blob1, out var blob2, out var blob3) 
-                == ContentDatabase.AssetError.NoError)
+            var asset = AssetDatabase.LoadAssetAtPath(newPath, typeof(Object));
+
+            var error = ContentDatabase.Get().CheckAsset(asset, out var guid, out var blob2, out var blob3);
+            if (error == ContentDatabase.AssetError.NoError)
             {
                 info.path = newPath;
             }
@@ -665,12 +778,12 @@ class ContentDatabasePostProcess : UnityEditor.AssetPostprocessor
     {
         for (int i = 0; i < movedAssets.Length; i++)
         {
-            MoveAssets(UnityEditor.AssetDatabase.AssetPathToGUID(movedAssets[i]), movedFromAssetPaths[i], movedAssets[i]);
+            MoveAssets(AssetDatabase.AssetPathToGUID(movedAssets[i]), movedFromAssetPaths[i], movedAssets[i]);
         }
 
         for (int i = 0; i < deletedAssets.Length; i++)
         {
-            DeleteAssets(UnityEditor.AssetDatabase.AssetPathToGUID(deletedAssets[i]));
+            DeleteAssets(AssetDatabase.AssetPathToGUID(deletedAssets[i]));
         }
         ContentDatabase.Save();
     }
