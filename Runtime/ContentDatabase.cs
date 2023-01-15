@@ -47,6 +47,10 @@ public partial class ContentDatabase : ScriptableObject
     private BundlePlaceMode bundleNameMode = BundlePlaceMode.Name_Type;
 #pragma warning restore CS0414
 
+    [Header("Bundle File Extension")]
+    [SerializeField]
+    private string Extension = "bundle";
+
     [Header("Show loading progress in console/logs")]
     [SerializeField]
     private bool Logging = true;
@@ -133,7 +137,7 @@ public partial class ContentDatabase : ScriptableObject
             var bundle = new AssetBundleBuild();
             bundle.assetBundleName = db[i].guid;
             {
-                string ext = Path.GetExtension(db[i].path);
+                string ext = Extension;
 
                 if (bundleNameMode == BundlePlaceMode.Name_Type)
                 {
@@ -150,12 +154,12 @@ public partial class ContentDatabase : ScriptableObject
                         s_t = "Scriptable";
                     }
 
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}{ext}");
+                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}.{ext}");
                 }
 
                 if (bundleNameMode == BundlePlaceMode.OnlyGUID)
                 {
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}{ext}");
+                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}.{ext}");
                 }
 
                 if (bundleNameMode == BundlePlaceMode.OnlyGUIDWithoutExtension)
@@ -166,9 +170,9 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (bundleNameMode == BundlePlaceMode.Name)
                 {
-                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].guid, $"{db[i].name}{ext}"))
+                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].guid, $"{db[i].name}.{ext}"))
                     {
-                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].guid}{ext}");
+                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].guid}.{ext}");
                     }
                 }
             }
