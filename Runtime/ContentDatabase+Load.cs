@@ -170,6 +170,14 @@ public partial class ContentDatabase : ScriptableObject
 
     public Dictionary<BundleInfo, LoadedAssetBundle> loadedAssetBundles = new Dictionary<BundleInfo, LoadedAssetBundle>();
 
+    public static void UnloadAll(bool unloadObjects = false)
+    {
+        foreach(var kvp in Get().loadedAssetBundles)
+        {
+            kvp.Value.AssetBundle?.Unload(unloadObjects);
+        }
+    }
+
     public static IEnumerator Coroutine_LoadBundle(AssetInfo info, Action<Status, string, float, AssetBundle, BundleInfo> Event)
     {
         //build dependencies order of main bundle
@@ -200,9 +208,9 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (operation != null)
                 {
+                    Log($"Loading {main_bundle_path}");
                     while (!operation.isDone)
                     {
-                        Log($"Loading {main_bundle_path} | {(int)(operation.progress * 100f)}%");
                         try
                         {
                             Event(Status.BundleLoading, chain.Name, operation.progress, null, chain);
@@ -262,6 +270,7 @@ public partial class ContentDatabase : ScriptableObject
         }
         else
         {
+            main_bundle = loadedBundle.AssetBundle;
             LogWarning($"Bundle {main_bundle_path} of {chain.Name} skipped!");
             try
             {
@@ -290,9 +299,9 @@ public partial class ContentDatabase : ScriptableObject
 
                     if (operation != null)
                     {
+                        Log($"Loading {dependency_path} dependency of {chain.Name}");
                         while (!operation.isDone)
                         {
-                            Log($"Loading {dependency_path} dependency of {chain.Name} | {(int)(operation.progress * 100f)}%");
                             try
                             {
                                 Event(Status.DependencyLoading, dependency_chain.Name, ((float)i/(float)dependency_count), null, dependency_chain);
@@ -392,9 +401,9 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (operation != null)
                 {
+                    Log($"Loading asset {assetInfo.name} from bundle {info.Name}");
                     while (!operation.isDone)
                     {
-                        Log($"Loading asset {assetInfo.name} from bundle {info.Name} | {(int)(operation.progress * 100f)}%");
                         try
                         {
                             Event(Status.AssetLoading, assetInfo.name, operation.progress, null);
@@ -450,9 +459,9 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (operation != null)
                 {
+                    Log($"Loading scene {assetInfo.name} from bundle {info.Name}");
                     while (!operation.isDone)
                     {
-                        Log($"Loading scene {assetInfo.name} from bundle {info.Name} | {(int)(operation.progress * 100f)}%");
                         try
                         {
                             Event(Status.SceneLoading, assetInfo.name, operation.progress);
