@@ -154,7 +154,18 @@ public partial class ContentDatabase : ScriptableObject
                         s_t = "Scriptable";
                     }
 
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}.{ext}");
+                    var s = $"{db[i].name}_{s_t}.{ext}";
+
+                    //check name dubl
+                    foreach (var kvp in temp_GUID_AssetBundleName)
+                    {
+                        if (kvp.Value == s)
+                        {
+                            s = $"{db[i].name}_{s_t}_{db[i].guid}.{ext}";
+                        }
+                    }
+
+                    temp_GUID_AssetBundleName.Add(db[i].guid, s);
                 }
 
                 if (bundleNameMode == BundlePlaceMode.OnlyGUID)
@@ -170,10 +181,18 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (bundleNameMode == BundlePlaceMode.Name)
                 {
-                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].guid, $"{db[i].name}.{ext}"))
+                    var s = $"{db[i].name}.{ext}";
+
+                    //check name dubl
+                    foreach (var kvp in temp_GUID_AssetBundleName)
                     {
-                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].guid}.{ext}");
+                        if (kvp.Value == s)
+                        {
+                            s = $"{db[i].name}_{db[i].guid}.{ext}";
+                        }
                     }
+
+                    temp_GUID_AssetBundleName.Add(db[i].guid, s);
                 }
             }
 
