@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using static AssetInfo;
 using Object = UnityEngine.Object;
@@ -23,7 +24,7 @@ public partial class ContentDatabase : ScriptableObject
                 }
                 catch { }
             }
-            else if (status == Status.BundleReady)
+            else if (status == Status.BundleReady || status == Status.BundleSkipped)
             {
                 ContentDatabaseQueue.PushToQueue(Coroutine_LoadAsset(assetInfo, chain, bundle, Event));
             }
@@ -91,22 +92,32 @@ public partial class ContentDatabase : ScriptableObject
     {
         if (TryGetAssetInfoByName(name, out var info))
         {
-            ContentDatabaseQueue.PushToQueue(Coroutine_LoadBundle(info,
-            delegate (Status status, string name, float progress, AssetBundle bundle, BundleInfo chain)
-            {
-            if (status != Status.BundleReady)
+            if (SceneManager.GetActiveScene().name == name || SceneManager.GetActiveScene().path == info.path || SceneManager.GetActiveScene().name == info.guid)
             {
                 try
                 {
-                    Event(status, name, progress);
+                    Event(Status.SceneAlreadyLoaded, name, 1);
                 }
                 catch { }
+                return;
             }
-            else if (status == Status.BundleReady)
+
+            ContentDatabaseQueue.PushToQueue(Coroutine_LoadBundle(info,
+            delegate (Status status, string name, float progress, AssetBundle bundle, BundleInfo chain)
             {
-                ContentDatabaseQueue.PushToQueue(Coroutine_LoadScene(info, chain,bundle, Event, mode, activateOnLoad));
-            }
-        }));
+                if (status != Status.BundleReady)
+                {
+                    try
+                    {
+                        Event(status, name, progress);
+                    }
+                    catch { }
+                }
+                else if (status == Status.BundleReady || status == Status.BundleSkipped)
+                {
+                    ContentDatabaseQueue.PushToQueue(Coroutine_LoadScene(info, chain, bundle, Event, mode, activateOnLoad));
+                }
+            }));
         }
         else
         {
@@ -162,12 +173,12 @@ public partial class ContentDatabase : ScriptableObject
     public static IEnumerator Coroutine_LoadBundle(AssetInfo info, Action<Status, string, float, AssetBundle, BundleInfo> Event)
     {
         //build dependencies order of main bundle
-        var deps_order = new List<BundleInfo>();
+        var dependencies_list = new List<BundleInfo>();
 
         BundleInfo chain;
         if (Get().TryGetChain(info.guid, out chain))
         {
-            deps_order.AddRange(chain.Dependencies);
+            dependencies_list.AddRange(chain.Dependencies);
         }
         else
         {
@@ -177,83 +188,24 @@ public partial class ContentDatabase : ScriptableObject
 
         //load main bundle
         AssetBundle main_bundle = null;
+
         var main_bundle_path = Path.Combine(ContentFolder, chain.Name);
-        if (File.Exists(main_bundle_path))
+        if (!Get().loadedAssetBundles.TryGetValue(chain, out LoadedAssetBundle loadedBundle))
         {
-            Log($"Bundle {main_bundle_path} found!");
-            var operation = AssetBundle.LoadFromFileAsync(main_bundle_path);
-
-            if (operation != null)
+            if (File.Exists(main_bundle_path))
             {
-                while (!operation.isDone)
-                {
-                    Log($"Loading {main_bundle_path} | {(int)(operation.progress * 100f)}%");
-                    try
-                    {
-                        Event(Status.BundleLoading, chain.Name, operation.progress, null, chain);
-                    }
-                    catch { }
-                    yield return null;
-                }
+                Log($"Bundle {main_bundle_path} found!");
 
-                if (operation.isDone)
-                {
-                    Log($"Loading {main_bundle_path} finished");
-
-                    main_bundle = operation.assetBundle;
-                    Get().loadedAssetBundles.Add(chain, new LoadedAssetBundle(chain.Name, main_bundle));
-                    try
-                    {
-                        Event(Status.BundleLoaded, chain.Name, operation.progress, main_bundle, chain);
-                    }
-                    catch { }
-                }
-            }
-            else
-            {
-                LogError($"Bundle {main_bundle_path} loading error!");
-                try
-                {
-                    Event(Status.BundleLoadingError, chain.Name, 0, null, chain);
-                }
-                catch { }
-                yield break;
-            }
-        }
-        else
-        {
-            LogError($"Bundle {main_bundle_path} not found!");
-            try
-            {
-                Event(Status.BundleNotFound, chain.Name, 0, null, chain);
-            }
-            catch { }
-            yield break;
-        }
-
-        int dependency_missing = 0;
-        int dependency_loaded = 0;
-        int dependency_count = deps_order.Count;
-
-        Log($"Tracking {dependency_count} dependencies for {chain.Name}");
-
-        for (int i = 0; i < dependency_count; i++)
-        {
-            var depedency_chain = deps_order[i];
-            var dependency_path = Path.Combine(ContentFolder, depedency_chain.Name);
-            if (File.Exists(dependency_path))
-            {
-                Log($"Dependency {dependency_path} of {chain.Name} found!");
-                var operation = AssetBundle.LoadFromFileAsync(dependency_path);
+                var operation = AssetBundle.LoadFromFileAsync(main_bundle_path);
 
                 if (operation != null)
                 {
                     while (!operation.isDone)
                     {
-                        Log($"Loading {dependency_path} dependency of {chain.Name} | {(int)(operation.progress * 100f)}%");
+                        Log($"Loading {main_bundle_path} | {(int)(operation.progress * 100f)}%");
                         try
                         {
-                            Event(Status.DependencyLoading, depedency_chain.Name, operation.progress, null, depedency_chain);
+                            Event(Status.BundleLoading, chain.Name, operation.progress, null, chain);
                         }
                         catch { }
                         yield return null;
@@ -261,43 +213,155 @@ public partial class ContentDatabase : ScriptableObject
 
                     if (operation.isDone)
                     {
-                        dependency_loaded++;
-                        Log($"Loading {dependency_path} dependency of {chain.Name} finished");
+                        if (operation.assetBundle)
+                        {
+                            Log($"Loading {main_bundle_path} finished");
 
-                        Get().loadedAssetBundles.Add(depedency_chain, new LoadedAssetBundle(depedency_chain.Name, operation.assetBundle));
+                            main_bundle = operation.assetBundle;
+                            Get().loadedAssetBundles.Add(chain, new LoadedAssetBundle(chain.Name, main_bundle));
+                            try
+                            {
+                                Event(Status.BundleLoaded, chain.Name, operation.progress, main_bundle, chain);
+                            }
+                            catch { }
+                        }
+                        else
+                        {
+                            LogError($"Bundle {main_bundle_path} loading error!");
+                            try
+                            {
+                                Event(Status.BundleLoadingError, chain.Name, 0, null, chain);
+                            }
+                            catch { }
+                            yield break;
+                        }
+                    }
+                }
+                else
+                {
+                    LogError($"Bundle {main_bundle_path} loading error!");
+                    try
+                    {
+                        Event(Status.BundleLoadingError, chain.Name, 0, null, chain);
+                    }
+                    catch { }
+                    yield break;
+                }
+            }
+            else
+            {
+                LogError($"Bundle {main_bundle_path} not found!");
+                try
+                {
+                    Event(Status.BundleNotFound, chain.Name, 0, null, chain);
+                }
+                catch { }
+
+                yield break;
+            }
+        }
+        else
+        {
+            LogWarning($"Bundle {main_bundle_path} of {chain.Name} skipped!");
+            try
+            {
+                Event(Status.BundleSkipped, chain.Name, 0, main_bundle, chain);
+            }
+            catch { }
+        }
+
+        int dependency_missing = 0;
+        int dependency_ready = 0;
+        int dependency_count = dependencies_list.Count;
+
+        Log($"Tracking {dependency_count} dependencies for {chain.Name}");
+
+        for (int i = 0; i < dependency_count; i++)
+        {
+            var dependency_chain = dependencies_list[i];
+            var dependency_path = Path.Combine(ContentFolder, dependency_chain.Name);
+
+            if (!Get().loadedAssetBundles.TryGetValue(dependency_chain, out LoadedAssetBundle loadedDependencyBundle))
+            {
+                if (File.Exists(dependency_path))
+                {
+                    Log($"Dependency {dependency_path} of {chain.Name} found!");
+                    var operation = AssetBundle.LoadFromFileAsync(dependency_path);
+
+                    if (operation != null)
+                    {
+                        while (!operation.isDone)
+                        {
+                            Log($"Loading {dependency_path} dependency of {chain.Name} | {(int)(operation.progress * 100f)}%");
+                            try
+                            {
+                                Event(Status.DependencyLoading, dependency_chain.Name, ((float)i/(float)dependency_count), null, dependency_chain);
+                            }
+                            catch { }
+                            yield return null;
+                        }
+
+                        if (operation.isDone)
+                        {
+                            if (operation.assetBundle)
+                            {
+                                dependency_ready++;
+                                Log($"Loading {dependency_path} dependency of {chain.Name} finished");
+
+                                Get().loadedAssetBundles.Add(dependency_chain, new LoadedAssetBundle(dependency_chain.Name, operation.assetBundle));
+
+                                try
+                                {
+                                    Event(Status.DependencyLoaded, dependency_chain.Name, operation.progress, operation.assetBundle, dependency_chain);
+                                }
+                                catch { }
+                            }
+                            else
+                            {
+                                LogError($"Dependency {dependency_path} of {chain.Name} loading error!");
+                                try
+                                {
+                                    Event(Status.DependencyLoadingError, dependency_chain.Name, 0, null, dependency_chain);
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        LogError($"Dependency {dependency_path} of {chain.Name} loading error!");
 
                         try
                         {
-                            Event(Status.DependencyLoaded, depedency_chain.Name, operation.progress, operation.assetBundle, depedency_chain);
+                            Event(Status.DependencyLoadingError, dependency_chain.Name, 0, null, dependency_chain);
                         }
                         catch { }
                     }
                 }
                 else
                 {
-                    LogError($"Dependency {dependency_path} of {chain.Name} loading error!");
+                    dependency_missing++;
+                    LogError($"Dependency {dependency_path} of {chain.Name} not found!");
 
                     try
                     {
-                        Event(Status.DependencyLoadingError, depedency_chain.Name, 0, null, depedency_chain);
+                        Event(Status.DependencyNotFound, dependency_chain.Name, 0, null, dependency_chain);
                     }
                     catch { }
                 }
             }
             else
             {
-                dependency_missing++;
-                LogError($"Dependency {dependency_path} of {chain.Name} not found!");
-
+                LogWarning($"Dependency {dependency_path} of {chain.Name} skipped!");
                 try
                 {
-                    Event(Status.DependencyNotFound, depedency_chain.Name, 0, null, depedency_chain);
+                    Event(Status.DependencySkipped, dependency_chain.Name, 0, loadedDependencyBundle.AssetBundle, dependency_chain);
                 }
                 catch { }
             }
         }
 
-        LogWarning($"Bundle {chain.Name} ready! [Dependencies Loaded: {dependency_loaded}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}]");
+        LogWarning($"Bundle {chain.Name} ready! [Dependencies Ready: {dependency_ready}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}]");
 
         try
         {

@@ -38,16 +38,25 @@ public class AssetInfo
 
     public enum Status
     {
+        Unknown,
         BundleNotFound,
         BundleLoadingError,
         BundleLoading,
+        BundleDownloadingError,
+        BundleDownloading,
+        BundleDownloaded,
         BundleLoaded,
+        BundleSkipped,
         BundleReady,
 
         DependencyNotFound,
         DependencyLoadingError,
         DependencyLoading,
+        DependencyDownloadingError,
+        DependencyDownloading,
+        DependencyDownloaded,
         DependencyLoaded,
+        DependencySkipped,
 
         AssetNotFound,
         AssetLoadingError,
@@ -57,6 +66,7 @@ public class AssetInfo
         SceneNotFound,
         SceneLoading,
         SceneLoaded,
+        SceneAlreadyLoaded,
 
         InstantiatingError,
         Instantiated

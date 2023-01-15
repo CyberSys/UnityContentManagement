@@ -36,11 +36,19 @@ public class ContentDatabaseQueue : MonoBehaviour
         Get().Queue.Add(e);
     }
 
+    [SerializeField]
+    private bool ShowLoaded;
+    Vector2 scroll;
     private void OnGUI()
     {
+        if (!ShowLoaded)
+            return;
+
+        scroll = GUILayout.BeginScrollView(scroll);
         foreach(var item in ContentDatabase.Get().loadedAssetBundles)
         {
             GUILayout.Box($"{item.Key.Name} -> {(item.Value.AssetBundle ? item.Value.AssetBundle.name : "bundle is null")}");
         }
+        GUILayout.EndScrollView();
     }
 }

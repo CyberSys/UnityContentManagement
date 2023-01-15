@@ -21,9 +21,6 @@ public partial class ContentDatabase : ScriptableObject
     public static string ContentFolder { get { return Path.Combine(Environment.CurrentDirectory, "Content"); } }
     public static string ContentDBPath { get { return Path.Combine(Environment.CurrentDirectory, "Content", "ContentDB.json"); } }
 
-    [Header("Bundle File Extension")]
-    public string Extension = "bundle";
-
     [SerializeField]
     private List<AssetInfo> m_Assets = new List<AssetInfo>();
 
@@ -54,24 +51,28 @@ public partial class ContentDatabase : ScriptableObject
     [SerializeField]
     private bool Logging = true;
 
-    /* BUILDING */
 #if UNITY_EDITOR
     [Header("Force Rebuilding")]
     [SerializeField]
     private bool ForceRebuild = true;
+
     [Header("Don't use compression")]
     [SerializeField]
     private bool Uncompressed = true;
+
     [Header("Don't write engine version")]
     [SerializeField]
     private bool StripUnityVersion = false;
+
     [Header("Remove .manifest")]
     [SerializeField]
     private bool RemoveManifest = false;
+
     [Header("Clear the content directory before building")]
     [SerializeField]
     private bool ClearContentDirectory = false;
 
+    [Header("Bundles building target")]
     [SerializeField]
     private BuildTarget buildTarget = BuildTarget.StandaloneWindows;
 #endif
@@ -132,16 +133,7 @@ public partial class ContentDatabase : ScriptableObject
             var bundle = new AssetBundleBuild();
             bundle.assetBundleName = db[i].guid;
             {
-                string ext = Extension;
-
-                if (ext.Length == 0)
-                {
-                    ext = ".unity";
-                }
-                else if (ext.Length >= 8)
-                {
-                    ext = ext.Substring(0, 8);
-                }
+                string ext = Path.GetExtension(db[i].path);
 
                 if (bundleNameMode == BundlePlaceMode.Name_Type)
                 {
@@ -158,12 +150,12 @@ public partial class ContentDatabase : ScriptableObject
                         s_t = "Scriptable";
                     }
 
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{s_t}.{ext}");
+                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}{ext}");
                 }
 
                 if (bundleNameMode == BundlePlaceMode.OnlyGUID)
                 {
-                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}.{ext}");
+                    temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}{ext}");
                 }
 
                 if (bundleNameMode == BundlePlaceMode.OnlyGUIDWithoutExtension)
@@ -174,9 +166,9 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (bundleNameMode == BundlePlaceMode.Name)
                 {
-                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].guid, $"{db[i].name}.{ext}"))
+                    if (!temp_GUID_AssetBundleName.TryAdd(db[i].guid, $"{db[i].name}{ext}"))
                     {
-                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].guid}.{ext}");
+                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].name}_{db[i].guid}{ext}");
                     }
                 }
             }
@@ -630,7 +622,7 @@ public partial class ContentDatabase : ScriptableObject
         {
             if (TryGetAssetInfo(i, out info))
             {
-                if (info.name.Contains(name, stringComparison))
+                if (info.name == name)
                 {
                     return true;
                 }
@@ -662,7 +654,7 @@ public partial class ContentDatabase : ScriptableObject
         {
             if (TryGetAssetInfo(i, out info))
             {
-                if (info.path.Contains(path, stringComparison))
+                if (info.path == path)
                 {
                     return true;
                 }
@@ -728,7 +720,7 @@ public partial class ContentDatabase : ScriptableObject
         if (!Get().Logging)
             return;
 
-        Debug.Log($"[{nameof(ContentDatabase)}] {text}", Get());
+        Debug.Log($"[{nameof(ContentDatabase)}] {text}");
     }
 
     public static void LogWarning(string text)
@@ -736,7 +728,7 @@ public partial class ContentDatabase : ScriptableObject
         if (!Get().Logging)
             return;
 
-        Debug.LogWarning($"[{nameof(ContentDatabase)}] {text}", Get());
+        Debug.LogWarning($"[{nameof(ContentDatabase)}] {text}");
     }
 
     public static void LogError(string text)
@@ -744,7 +736,7 @@ public partial class ContentDatabase : ScriptableObject
         if (!Get().Logging)
             return;
 
-        Debug.LogError($"[{nameof(ContentDatabase)}] {text}", Get());
+        Debug.LogError($"[{nameof(ContentDatabase)}] {text}");
     }
 }
 
