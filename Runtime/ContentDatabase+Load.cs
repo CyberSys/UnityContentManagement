@@ -204,6 +204,7 @@ public partial class ContentDatabase : ScriptableObject
             {
                 Log($"Bundle {main_bundle_path} found!");
 
+                var start_load_time = DateTime.Now.Millisecond;
                 var operation = AssetBundle.LoadFromFileAsync(main_bundle_path);
 
                 if (operation != null)
@@ -223,7 +224,8 @@ public partial class ContentDatabase : ScriptableObject
                     {
                         if (operation.assetBundle)
                         {
-                            Log($"Loading {main_bundle_path} finished");
+                            start_load_time = DateTime.Now.Millisecond - start_load_time;
+                            Log($"Loading {main_bundle_path} finished [Load time: {start_load_time} ms]");
 
                             main_bundle = operation.assetBundle;
                             Get().loadedAssetBundles.Add(chain, new LoadedAssetBundle(chain.Name, main_bundle));
@@ -285,6 +287,8 @@ public partial class ContentDatabase : ScriptableObject
 
         Log($"Tracking {dependency_count} dependencies for {chain.Name}");
 
+        var dependencies_Load_time = DateTime.Now.Millisecond;
+
         for (int i = 0; i < dependency_count; i++)
         {
             var dependency_chain = dependencies_list[i];
@@ -295,6 +299,7 @@ public partial class ContentDatabase : ScriptableObject
                 if (File.Exists(dependency_path))
                 {
                     Log($"Dependency {dependency_path} of {chain.Name} found!");
+                    var start_load_time = DateTime.Now.Millisecond;
                     var operation = AssetBundle.LoadFromFileAsync(dependency_path);
 
                     if (operation != null)
@@ -315,7 +320,10 @@ public partial class ContentDatabase : ScriptableObject
                             if (operation.assetBundle)
                             {
                                 dependency_ready++;
-                                Log($"Loading {dependency_path} dependency of {chain.Name} finished");
+
+                                start_load_time = DateTime.Now.Millisecond - start_load_time;
+
+                                Log($"Loading {dependency_path} dependency of {chain.Name} finished [Load time: {start_load_time} ms]");
 
                                 Get().loadedAssetBundles.Add(dependency_chain, new LoadedAssetBundle(dependency_chain.Name, operation.assetBundle));
 
@@ -370,7 +378,8 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
-        LogWarning($"Bundle {chain.Name} ready! [Dependencies Ready: {dependency_ready}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}]");
+        dependencies_Load_time = DateTime.Now.Millisecond - dependencies_Load_time;
+        LogWarning($"Bundle {chain.Name} ready! [Dependencies Ready: {dependency_ready}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}] [Load time: {dependencies_Load_time} ms]");
 
         try
         {
