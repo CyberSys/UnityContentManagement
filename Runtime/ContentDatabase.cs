@@ -10,6 +10,8 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using Object = UnityEngine.Object;
+using System.Threading.Tasks;
+using UnityEngine.Networking;
 
 #if UNITY_EDITOR
 public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithReport
@@ -39,7 +41,8 @@ public partial class ContentDatabase : ScriptableObject
         OnlyGUID,
         OnlyGUIDWithoutExtension,
         Name_Type,
-        Name
+        Name,
+        RawPath
     }
 
 #pragma warning disable CS0414
@@ -60,9 +63,19 @@ public partial class ContentDatabase : ScriptableObject
     [SerializeField]
     private bool ForceRebuild = true;
 
-    [Header("Don't use compression")]
+    public enum CompressionType
+    {
+        Uncompressed,
+        LZMA,
+        LZ4
+    }
+
+    [Header("Compression Mode")]
+    [Header("Uncompressed <color=green>(speed++) (size++)</color>")]
+    [Header("LZ4 <color=yellow>(speed+) (size-)</color>")]
+    [Header("LZMA <color=red>(speed--) (size--)")]
     [SerializeField]
-    private bool Uncompressed = true;
+    private CompressionType Compression = CompressionType.Uncompressed;
 
     [Header("Don't write engine version")]
     [SerializeField]
@@ -123,7 +136,7 @@ public partial class ContentDatabase : ScriptableObject
     }
 
     [ContextMenu("BuildContent")]
-    public void BuildContent()
+    public async void BuildContent()
     {
 #if UNITY_EDITOR
         var db = Get();
@@ -132,13 +145,19 @@ public partial class ContentDatabase : ScriptableObject
 
         Dictionary<string, string> temp_GUID_AssetBundleName = new Dictionary<string, string>();
 
+        EditorUtility.DisplayProgressBar("ContentDatabase -> Preparing...", "...", 0);
+
         for (var i = 0; i < Assets; i++)
         {
             var bundle = new AssetBundleBuild();
             bundle.assetBundleName = db[i].guid;
             {
                 string ext = Extension;
-
+                string editor_type = AssetDatabase.GetImporterType(db[i].path).Name;
+                if(editor_type.Contains("Importer", StringComparison.OrdinalIgnoreCase))
+                {
+                    editor_type = editor_type.Replace("Importer", string.Empty);
+                }
                 if (bundleNameMode == BundlePlaceMode.Name_Type)
                 {
                     string s_t = db[i].type;
@@ -161,7 +180,7 @@ public partial class ContentDatabase : ScriptableObject
                     {
                         if (kvp.Value == s)
                         {
-                            s = $"{db[i].name}_{s_t}_{db[i].guid}.{ext}";
+                            s = $"{db[i].name}_{s_t}_{editor_type}.{ext}";
                         }
                     }
 
@@ -188,12 +207,21 @@ public partial class ContentDatabase : ScriptableObject
                     {
                         if (kvp.Value == s)
                         {
-                            s = $"{db[i].name}_{db[i].guid}.{ext}";
+                            s = $"{db[i].name}_{editor_type}.{ext}";
                         }
                     }
 
                     temp_GUID_AssetBundleName.Add(db[i].guid, s);
                 }
+
+                if(bundleNameMode == BundlePlaceMode.RawPath)
+                {
+                    var wo_ext = Path.ChangeExtension(db[i].path, Extension);
+                    temp_GUID_AssetBundleName.Add(db[i].guid, wo_ext);
+                }
+
+                EditorUtility.DisplayProgressBar("ContentDatabase -> Checking by bundle name mode", $"{db[i].path} -> {temp_GUID_AssetBundleName[db[i].guid]}", (float)i/(float)Assets);
+                await Task.Yield();
             }
 
             bundle.assetNames = new string[1];
@@ -214,13 +242,17 @@ public partial class ContentDatabase : ScriptableObject
 
         var bopt = BuildAssetBundleOptions.None;
 
-        if (Uncompressed)
+        if (Compression == CompressionType.Uncompressed)
         {
             bopt |= BuildAssetBundleOptions.UncompressedAssetBundle;
         }
-        else
+        else if(Compression == CompressionType.LZ4)
         {
             bopt |= BuildAssetBundleOptions.ChunkBasedCompression;
+        }
+        else if (Compression == CompressionType.LZMA)
+        {
+            bopt |= BuildAssetBundleOptions.None;
         }
 
         if (StripUnityVersion)
@@ -238,15 +270,18 @@ public partial class ContentDatabase : ScriptableObject
         if (manifest != null)
         {
             //Building chains
+            EditorUtility.DisplayProgressBar("ContentDatabase -> Generating", "Generating loading chains", 0.5f);
             GenerateChains(manifest);
 
             //moving files
-            if (Get().bundleNameMode == BundlePlaceMode.Name || Get().bundleNameMode == BundlePlaceMode.Name_Type)
+            if (Get().bundleNameMode == BundlePlaceMode.Name || Get().bundleNameMode == BundlePlaceMode.Name_Type || Get().bundleNameMode == BundlePlaceMode.RawPath)
             {
+                int i = 0;
                 foreach (var dictionary in temp_GUID_AssetBundleName)
                 {
-                    var file_path = Path.Combine(ContentFolder, dictionary.Key);
-                    if (File.Exists(file_path))
+                    EditorUtility.DisplayProgressBar("ContentDatabase -> Renaming files", $"Renaming file: {dictionary.Key} -> {dictionary.Value}", (float)i/(float)temp_GUID_AssetBundleName.Count);
+                    var file_path_with_guid = Path.Combine(ContentFolder, dictionary.Key);
+                    if (File.Exists(file_path_with_guid))
                     {
                         string new_file_path = Path.Combine(ContentFolder, dictionary.Value);
 
@@ -255,11 +290,20 @@ public partial class ContentDatabase : ScriptableObject
                             File.Delete(new_file_path);
                         }
 
-                        File.Move(file_path, new_file_path);
+                        if (Get().bundleNameMode == BundlePlaceMode.RawPath)
+                        {
+                            var dir = Path.GetDirectoryName(new_file_path);
+                            if (!Directory.Exists(dir))
+                            {
+                                Directory.CreateDirectory(dir);
+                            }
+                        }
+
+                        File.Move(file_path_with_guid, new_file_path);
                     }
                 }
             }
-
+            EditorUtility.DisplayProgressBar("ContentDatabase -> Renaming files", "Fixing names in chains by file names", 0.7f);
             RenameDependencyChains(temp_GUID_AssetBundleName);
         }
         else
@@ -278,6 +322,8 @@ public partial class ContentDatabase : ScriptableObject
         }
 
         File.WriteAllText(ContentDBPath, JsonUtility.ToJson(this, true));
+
+        EditorUtility.ClearProgressBar();
 #endif
     }
 
@@ -725,7 +771,37 @@ public partial class ContentDatabase : ScriptableObject
 
     void IPostprocessBuildWithReport.OnPostprocessBuild(BuildReport report)
     {
+        if (report.summary.result == BuildResult.Succeeded)
+        {
+            CopyDirectory(ContentFolder, report.summary.outputPath);
+        }
 
+        void CopyDirectory(string sourceDir, string destinationDir)
+        {
+            var dir = new DirectoryInfo(sourceDir);
+
+            if (!dir.Exists)
+            {
+                LogError($"Source directory not found: {dir.FullName}");
+                return;
+            }
+
+            DirectoryInfo[] dirs = dir.GetDirectories();
+
+            Directory.CreateDirectory(destinationDir);
+
+            foreach (FileInfo file in dir.GetFiles())
+            {
+                string targetFilePath = Path.Combine(destinationDir, file.Name);
+                file.CopyTo(targetFilePath);
+            }
+
+            foreach (DirectoryInfo subDir in dirs)
+            {
+                string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
+                CopyDirectory(subDir.FullName, newDestinationDir);
+            }
+        }
     }
 #endif
 }
