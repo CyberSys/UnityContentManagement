@@ -27,7 +27,7 @@ public class ContentDatabaseQueue : MonoBehaviour
                 yield return Get().StartCoroutine(q);
                 Queue.Remove(q);
             }
-            yield return new WaitForSeconds(0.5f);
+            yield return null;
         }
     }
 
