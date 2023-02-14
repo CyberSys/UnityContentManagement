@@ -4,14 +4,11 @@ using UnityEngine.Build.Pipeline;
 
 public partial class ContentDatabase : ScriptableObject
 {
-    [HideInInspector]
-    public List<BundleInfo> m_Chains = new List<BundleInfo>();
-
     public bool TryGetChain(string guid, out BundleInfo chain)
     {
         chain = default;
 
-        foreach(var c in m_Chains)
+        foreach(var c in m_ContentInfo.Chains)
         {
             if(c.AssetInfo.guid == guid)
             {
@@ -26,7 +23,7 @@ public partial class ContentDatabase : ScriptableObject
     public void GenerateChains(CompatibilityAssetBundleManifest manifest)
     {
 #if UNITY_EDITOR
-        m_Chains.Clear();
+        m_ContentInfo.Chains.Clear();
 
         foreach (var guid in manifest.GetAllAssetBundles())
         {
@@ -49,7 +46,7 @@ public partial class ContentDatabase : ScriptableObject
                     }
                 }
 
-                m_Chains.Add(di);
+                m_ContentInfo.Chains.Add(di);
             }
         }
 #endif
@@ -74,9 +71,9 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
-        for (int i = 0; i < m_Chains.Count; i++)
+        for (int i = 0; i < m_ContentInfo.Chains.Count; i++)
         {
-            Rename(m_Chains[i]);
+            Rename(m_ContentInfo.Chains[i]);
         }
 #endif
     }

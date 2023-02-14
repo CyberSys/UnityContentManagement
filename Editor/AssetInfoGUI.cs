@@ -34,7 +34,7 @@ public static class AssetInspectorGUI
 
         bool has_asset = ContentDatabase.Contains(selectedObject, out var info);
 
-        if ((PrefabStageUtility.GetCurrentPrefabStage() != null && PrefabStageUtility.GetCurrentPrefabStage().mode == PrefabStage.Mode.InIsolation && PrefabStageUtility.GetCurrentPrefabStage().assetPath == info.path))
+        if ((PrefabStageUtility.GetCurrentPrefabStage() != null && PrefabStageUtility.GetCurrentPrefabStage().mode == PrefabStage.Mode.InIsolation) && info != null && PrefabStageUtility.GetCurrentPrefabStage().assetPath == info.path)
         {
             EditorGUILayout.HelpBox(s_IsolationText.text, MessageType.Warning, true);
             return;
@@ -136,6 +136,9 @@ public static class AssetInspectorGUI
 
     static void OnPostHeaderGUI(Editor editor)
     {
+        var oldState = GUI.enabled;
+
+        GUI.enabled = true;
         if(editor.targets.Length == 1)
         {
             SingleSelectedAsset(editor.targets[0]);
@@ -144,5 +147,6 @@ public static class AssetInspectorGUI
         {
             MultipleAddAssets(editor.targets);
         }
+        GUI.enabled = oldState;
     }
 }

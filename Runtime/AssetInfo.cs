@@ -74,11 +74,19 @@ public class AssetInfo
 
     public void LoadAsset<T>(Action<Status, string, float, T> onState = null) where T : Object
     {
+        if (!IsValid())
+        {
+            return;
+        }
         ContentDatabase.LoadAsset(this, onState);
     }
 
     public void Instantiate<T>(Action<Status, string, float, T> onState = null) where T : Object
     {
+        if (!IsValid())
+        {
+            return;
+        }
         ContentDatabase.Instantiate(this, onState);
     }
 
