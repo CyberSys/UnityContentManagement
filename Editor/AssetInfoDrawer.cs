@@ -6,7 +6,9 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
+using static ContentDatabaseEditor;
 using Object = UnityEngine.Object;
+using Random = UnityEngine.Random;
 
 [CustomPropertyDrawer(typeof(AssetInfo), true)]
 class AssetInfoDrawer : PropertyDrawer
@@ -146,19 +148,6 @@ class AssetInfoPopup : EditorWindow
     }
 }
 
-sealed class AssetInfoTreeViewItem : TreeViewItem
-{
-    public AssetInfo info;
-
-    public AssetInfoTreeViewItem(AssetInfo info) : base(info.GetHashCode(), 0, info.name)
-    {
-        this.info = info;
-        icon = AssetDatabase.GetCachedIcon(info.path) as Texture2D;
-    }
-
-    public AssetInfoTreeViewItem() : base(0, 0, "None") { info = new AssetInfo(); }
-}
-
 class AssetInfoTreeView : TreeView
 {
     public AssetInfoTreeView(TreeViewState state, AssetInfoPopup popup) : base(state)
@@ -185,9 +174,9 @@ class AssetInfoTreeView : TreeView
 
     protected override void DoubleClickedItem(int id)
     {
-        var assetInfoItem = FindItem(id, rootItem) as AssetInfoTreeViewItem;
-        popup.drawer.fieldInfo.SetValue(popup.drawer.assetProperty.serializedObject.targetObject, assetInfoItem.info);
-        popup.drawer.info = assetInfoItem.info;
+        var assetInfoItem = FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem;
+        popup.drawer.fieldInfo.SetValue(popup.drawer.assetProperty.serializedObject.targetObject, assetInfoItem.asset);
+        popup.drawer.info = assetInfoItem.asset;
         popup.drawer.assetProperty.serializedObject.ApplyModifiedProperties();
         popup.drawer.assetProperty.serializedObject.Update();
         EditorUtility.SetDirty(popup.drawer.assetProperty.serializedObject.targetObject);
@@ -199,9 +188,9 @@ class AssetInfoTreeView : TreeView
     {
         if (selectedIds != null && selectedIds.Count == 1)
         {
-            var assetInfoItem = FindItem(selectedIds[0], rootItem) as AssetInfoTreeViewItem;
-            popup.drawer.fieldInfo.SetValue(popup.drawer.assetProperty.serializedObject.targetObject, assetInfoItem.info);
-            popup.drawer.info = assetInfoItem.info;
+            var assetInfoItem = FindItem(selectedIds[0], rootItem) as ContentDatabaseAssetInfoTreeViewItem;
+            popup.drawer.fieldInfo.SetValue(popup.drawer.assetProperty.serializedObject.targetObject, assetInfoItem.asset);
+            popup.drawer.info = assetInfoItem.asset;
             popup.drawer.assetProperty.serializedObject.ApplyModifiedProperties();
             popup.drawer.assetProperty.serializedObject.Update();
             EditorUtility.SetDirty(popup.drawer.assetProperty.serializedObject.targetObject);
@@ -212,20 +201,30 @@ class AssetInfoTreeView : TreeView
 
     protected override TreeViewItem BuildRoot()
     {
-        var root = new TreeViewItem(-1, -1);
+        var Root = new TreeViewItem(-1, -1, "Root");
 
-        root.AddChild(new AssetInfoTreeViewItem());
-
-        /*
-        for(int i = 0; i < ContentDatabase.Assets;i++)
+        if (ContentDatabase.Get().GetContentInfo().Groups.Count > 0)
         {
-            var info = ContentDatabase.Get()[i];
-            var child = new AssetInfoTreeViewItem(info);
-            root.AddChild(child);
-        }
-         */
+            for (int i = 0; i < ContentDatabase.Get().GetContentInfo().Groups.Count; i++)
+            {
+                var group = ContentDatabase.Get().GetContentInfo().Groups[i];
+                var group_item = new ContentDatabaseGroupTreeViewItem(i, group);
+                Root.AddChild(group_item);
 
-        return root;
+                for (int j = 0; j < group.Assets.Count; j++)
+                {
+                    var asset = group.Assets[j];
+                    var asset_item = new ContentDatabaseAssetInfoTreeViewItem(group_item, asset);
+                    group_item.AddChild(asset_item);
+                }
+            }
+        }
+        else
+        {
+            Root.AddChild(new TreeViewItem() { id = Random.Range(0, int.MaxValue), displayName = "No groups!" });
+        }
+
+        return Root;
     }
 }
 
