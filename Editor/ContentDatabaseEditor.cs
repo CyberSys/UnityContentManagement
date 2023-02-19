@@ -1,8 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
+using Object = UnityEngine.Object;
+using Random = UnityEngine.Random;
 
 public class ContentDatabaseEditor : EditorWindow
 {
@@ -31,16 +34,15 @@ public class ContentDatabaseEditor : EditorWindow
     }
 
 
-    ContentDatabaseAssetInfoTreeView m_AssetsTree;
+    ContentDatabaseTreeView m_AssetsTree;
     TreeViewState m_AssetsTreeState;
     SearchField m_AssetsSearchField;
 
     private void OnGUI()
     {
-
         if (db)
         {
-            titleContent = new GUIContent($"Content Management | Assets: {db.GetContentInfo().Assets.Count}");
+            titleContent = new GUIContent($"Content Management | Groups: {db.GetContentInfo().Groups.Count}");
         }
 
         int border = 4;
@@ -64,8 +66,8 @@ public class ContentDatabaseEditor : EditorWindow
             {
                 if (m_AssetsTreeState == null) { m_AssetsTreeState = new TreeViewState(); }
 
-                var headerState = ContentDatabaseAssetInfoTreeView.GetColumns();
-                m_AssetsTree = new ContentDatabaseAssetInfoTreeView(m_AssetsTreeState, headerState);
+                var headerState = ContentDatabaseTreeView.GetColumns();
+                m_AssetsTree = new ContentDatabaseTreeView(m_AssetsTreeState, headerState);
                 m_AssetsTree.Reload();
             }
             else
@@ -78,9 +80,52 @@ public class ContentDatabaseEditor : EditorWindow
 
     /* ----------------------------------------------------------------- */
 
+    public sealed class ContentDatabaseGroupTreeViewItem : TreeViewItem
+    {
+        public ContentDatabase.ContentInfo.Group group;
+        private static Texture2D EmptyIcon;
+        private static Texture2D FilledIcon;
+        private static Texture2D NullIcon;
+
+        private static void CacheIcon()
+        {
+            if (!EmptyIcon) { EmptyIcon = EditorGUIUtility.IconContent("d_FolderEmpty Icon").image as Texture2D; }
+            if (!FilledIcon) { FilledIcon = EditorGUIUtility.IconContent("d_Folder Icon").image as Texture2D; }
+            if (!NullIcon) { NullIcon = EditorGUIUtility.IconContent("console.warnicon").image as Texture2D; }
+        }
+
+        public void UpdateIcon()
+        {
+            CacheIcon();
+
+            if (group != null)
+            {
+                if (group.Assets.Count > 0)
+                {
+                    icon = FilledIcon;
+                }
+                else
+                {
+                    icon = EmptyIcon;
+                }
+            }
+            else
+            {
+                icon = NullIcon;
+            }
+        }
+
+        public ContentDatabaseGroupTreeViewItem(int id, ContentDatabase.ContentInfo.Group group) : base(id, 0, group.name)
+        {
+            this.group = group;
+            UpdateIcon();
+        }
+    }
+
     public sealed class ContentDatabaseAssetInfoTreeViewItem : TreeViewItem
     {
         public AssetInfo asset;
+
         public long size { get; private set; } = 0;
 
         public void UpdateSize()
@@ -92,77 +137,22 @@ public class ContentDatabaseEditor : EditorWindow
             catch { }
         }
 
-        public ContentDatabaseAssetInfoTreeViewItem(int index, AssetInfo info) : base(index, 0, info.name)
+        public ContentDatabaseAssetInfoTreeViewItem(ContentDatabaseGroupTreeViewItem group, AssetInfo info) : base(info.guid.GetHashCode(), 1, info.name)
         {
+            parent = group;
             asset = info;
             icon = AssetDatabase.GetCachedIcon(info.path) as Texture2D;
+            UpdateSize();
         }
     }
 
-    public class ContentDatabaseAssetInfoTreeView : TreeView
+    public class ContentDatabaseTreeView : TreeView
     {
-        public ContentDatabaseAssetInfoTreeView(TreeViewState state, MultiColumnHeaderState headerState) : base(state, new MultiColumnHeader(headerState))
+        public ContentDatabaseTreeView(TreeViewState state, MultiColumnHeaderState headerState) : base(state, new MultiColumnHeader(headerState))
         {
             showAlternatingRowBackgrounds = true;
-            multiColumnHeader.sortingChanged += delegate (MultiColumnHeader multiColumnHeader)
-            {
-                var root = rootItem;
-                var rows = GetRows();
-
-                IOrderedEnumerable<ContentDatabaseAssetInfoTreeViewItem> InitialOrder(IEnumerable<ContentDatabaseAssetInfoTreeViewItem> myTypes, int[] columnList)
-                {
-                    var sortOption = columnList[0];
-                    bool ascending = multiColumnHeader.IsSortedAscending(columnList[0]);
-                    switch (sortOption)
-                    {
-                        case 1:
-                            return myTypes.Order(l => l.asset.name, ascending);
-                        case 2:
-                            return myTypes.Order(l => l.asset.path, ascending);
-                        case 3:
-                            return myTypes.Order(l => l.asset.type, ascending);
-                        case 4:
-                            return myTypes.Order(l => l.asset.base_type, ascending);
-                        case 5:
-                            return myTypes.Order(l => l.size, ascending);
-                        default:
-                            return myTypes.Order(l => l.displayName, ascending);
-                    }
-                }
-
-                void SortByColumn()
-                {
-                    var sortedColumns = multiColumnHeader.state.sortedColumns;
-
-                    if (sortedColumns.Length == 0)
-                        return;
-
-                    List<ContentDatabaseAssetInfoTreeViewItem> assetList = new List<ContentDatabaseAssetInfoTreeViewItem>();
-                    foreach (var item in rootItem.children)
-                    {
-                        assetList.Add(item as ContentDatabaseAssetInfoTreeViewItem);
-                    }
-                    var orderedItems = InitialOrder(assetList, sortedColumns);
-
-                    rootItem.children = orderedItems.Cast<TreeViewItem>().ToList();
-                }
-
-                if (rows.Count <= 1)
-                    return;
-
-                if (multiColumnHeader.sortedColumnIndex == -1)
-                    return;
-
-                SortByColumn();
-
-                rows.Clear();
-                for (int i = 0; i < root.children.Count; i++)
-                    rows.Add(root.children[i]);
-
-                Repaint();
-            };
+            showBorder = true;
         }
-
         protected override bool CanMultiSelect(TreeViewItem item)
         {
             return true;
@@ -170,6 +160,7 @@ public class ContentDatabaseEditor : EditorWindow
 
         private bool m_IsMultiSelected = false;
         private IList<int> selectedIds;
+
         protected override void SelectionChanged(IList<int> ids)
         {
             selectedIds = ids;
@@ -184,38 +175,59 @@ public class ContentDatabaseEditor : EditorWindow
             if (selectedIds != null && selectedIds.Count == 1)
             {
                 var element = FindItem(selectedIds[0], rootItem) as ContentDatabaseAssetInfoTreeViewItem;
+
+                if (element != null)
+                {
+                    var asset = AssetDatabase.LoadMainAssetAtPath(element.asset.path);
+
+                    if (asset)
+                    {
+                        EditorGUIUtility.PingObject(asset);
+                    }
+                }
+
                 SetFocus();
             }
         }
 
         protected override void DoubleClickedItem(int id)
         {
-            var element = FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem;
+            var element = FindItem(id, rootItem);
 
-            if(element.asset != null)
+            if (element is ContentDatabaseAssetInfoTreeViewItem)
             {
-                var obj = AssetDatabase.LoadMainAssetAtPath(element.asset.path);
-                EditorGUIUtility.PingObject(obj);
+                var element_asset = (element as ContentDatabaseAssetInfoTreeViewItem);
+                if (element_asset.asset != null)
+                {
+                    var obj = AssetDatabase.LoadMainAssetAtPath(element_asset.asset.path);
+                    EditorGUIUtility.PingObject(obj);
+                }
             }
         }
 
         protected override TreeViewItem BuildRoot()
         {
-            var Root = new TreeViewItem(-1, -1);
+            var Root = new TreeViewItem(-1, -1, "Root");
 
-            if (ContentDatabase.Get().GetContentInfo().Assets.Count > 0)
+            if (ContentDatabase.Get().GetContentInfo().Groups.Count > 0)
             {
-                for (int i = 0; i < ContentDatabase.Get().GetContentInfo().Assets.Count; i++)
+                for (int i = 0; i < ContentDatabase.Get().GetContentInfo().Groups.Count; i++)
                 {
-                    var asset = ContentDatabase.Get().GetContentInfo().Assets[i];
-                    var child = new ContentDatabaseAssetInfoTreeViewItem(i, asset);
-                    child.UpdateSize();
-                    Root.AddChild(child);
+                    var group = ContentDatabase.Get().GetContentInfo().Groups[i];
+                    var group_item = new ContentDatabaseGroupTreeViewItem(i, group);
+                    Root.AddChild(group_item);
+
+                    for (int j = 0; j < group.Assets.Count; j++)
+                    {
+                        var asset = group.Assets[j];
+                        var asset_item = new ContentDatabaseAssetInfoTreeViewItem(group_item, asset);
+                        group_item.AddChild(asset_item);
+                    }
                 }
             }
             else
             {
-                Root.AddChild(new TreeViewItem() { id = int.MinValue, displayName = "No Assets" });
+                Root.AddChild(new TreeViewItem() { id = Random.Range(0, int.MaxValue), displayName = "No groups!" });
             }
 
             return Root;
@@ -224,34 +236,173 @@ public class ContentDatabaseEditor : EditorWindow
         protected override bool CanStartDrag(CanStartDragArgs args)
         {
             args.draggedItemIDs = GetSelection();
+
+            foreach (var id in args.draggedItemIDs)
+            {
+                var element = FindItem(id, rootItem);
+
+                if (element is ContentDatabaseGroupTreeViewItem)
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
+
+        private bool m_DraggingIntoAnotherGroup = false;
 
         protected override void SetupDragAndDrop(SetupDragAndDropArgs args)
         {
             DragAndDrop.PrepareStartDrag();
-            var items = new List<ContentDatabaseAssetInfoTreeViewItem>(args.draggedItemIDs.Select(id => FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem));
+
+            var selected = args.draggedItemIDs.Select(id => FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem);
+            var items = new List<ContentDatabaseAssetInfoTreeViewItem>(selected);
             DragAndDrop.paths = items.Select(a => a.asset.path).ToArray();
+
+            DragAndDrop.visualMode = items.Count > 0 ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
+            m_DraggingIntoAnotherGroup = items.Count > 0;
+            DragAndDrop.StartDrag("DraggingAssetsIntoGroup");
         }
 
         protected override DragAndDropVisualMode HandleDragAndDrop(DragAndDropArgs args)
         {
-            if (args.performDrop)
-            {
-                var paths = DragAndDrop.paths;
+            var paths = DragAndDrop.paths;
 
-                int added = 0;
-                foreach (var path in paths)
+            if (!m_DraggingIntoAnotherGroup)
+            {
+                if (args.performDrop)
                 {
-                    if (ContentDatabase.AddAsset(AssetDatabase.LoadMainAssetAtPath(path)) == ContentDatabase.AssetError.NoError)
+                    if (args.parentItem == null)
                     {
-                        added++;
+                        if (paths.Length == 1)
+                        {
+                            ContentDatabase.AssetError error = ContentDatabase.AssetError.Unknown;
+                            Object asset = AssetDatabase.LoadMainAssetAtPath(paths[0]);
+                            ContentDatabase.ContentInfo.Group group = ContentDatabase.Get().GetContentInfo().AddGroupOrFind(asset.name);
+
+                            error = ContentDatabase.AddAsset(group, asset);
+                            if (error == ContentDatabase.AssetError.NoError)
+                            {
+                                Window.ShowNotification(new GUIContent($"{asset.name} added in {group.name}"));
+                            }
+                            else
+                            {
+                                Window.ShowNotification(new GUIContent($"{asset.name} asset add failed! {error}"));
+                            }
+                        }
+                        else if (paths.Length > 1)
+                        {
+                            var group = ContentDatabase.Get().GetContentInfo().AddGroupOrFind("Shared");
+                            int added = 0;
+                            foreach (var path in paths)
+                            {
+                                var asset = AssetDatabase.LoadMainAssetAtPath(path);
+                                if (ContentDatabase.AddAsset(group, asset) == ContentDatabase.AssetError.NoError)
+                                {
+                                    added++;
+                                }
+                            }
+
+                            if (added > 0)
+                            {
+                                Window.ShowNotification(new GUIContent($"Added {added} assets in {group.name}"));
+                            }
+                        }
+                    }
+                    else if (args.parentItem is ContentDatabaseGroupTreeViewItem)
+                    {
+                        if (paths.Length == 1)
+                        {
+                            var group_item = args.parentItem as ContentDatabaseGroupTreeViewItem;
+                            ContentDatabase.AssetError error = ContentDatabase.AssetError.Unknown;
+                            Object asset = AssetDatabase.LoadMainAssetAtPath(paths[0]);
+                            error = ContentDatabase.AddAsset(group_item.group, asset);
+                            if (error == ContentDatabase.AssetError.NoError)
+                            {
+                                Window.ShowNotification(new GUIContent($"{asset.name} added in {group_item.group.name}"));
+                            }
+                            else if (error == ContentDatabase.AssetError.GroupOnlyForScenes)
+                            {
+                                Window.ShowNotification(new GUIContent($"Group {group_item.displayName} group can only contain scenes"));
+                            }
+                            else
+                            {
+                                Window.ShowNotification(new GUIContent($"{asset.name} adding failed! error: {error}"));
+                            }
+                        }
+                        else if (paths.Length > 1)
+                        {
+                            var group_item = args.parentItem as ContentDatabaseGroupTreeViewItem;
+                            int added = 0;
+                            foreach (var path in paths)
+                            {
+                                var asset = AssetDatabase.LoadMainAssetAtPath(path);
+                                var error = ContentDatabase.AddAsset(group_item.group, asset);
+                                if (error == ContentDatabase.AssetError.NoError)
+                                {
+                                    added++;
+                                }
+                            }
+
+                            if (added > 0)
+                            {
+                                Window.ShowNotification(new GUIContent($"Added {added} assets in {group_item.group.name}"));
+                            }
+                        }
                     }
                 }
-
-                if (added > 0)
+            }
+            else //moving assets
+            {
+                if (args.performDrop)
                 {
-                    Window.ShowNotification(new GUIContent($"Added {added} assets"));
+                    if (paths.Length == 1)
+                    {
+                        var group_item = args.parentItem as ContentDatabaseGroupTreeViewItem;
+
+                        var group = group_item != null ? group_item.group : ContentDatabase.Get().GetContentInfo().AddGroupOrFind("Shared");
+
+                        ContentDatabase.AssetError error = ContentDatabase.AssetError.Unknown;
+                        Object asset = AssetDatabase.LoadMainAssetAtPath(paths[0]);
+                        ContentDatabase.RemoveAsset(asset);
+                        error = ContentDatabase.AddAsset(group, asset);
+                        if (error == ContentDatabase.AssetError.NoError)
+                        {
+                            Window.ShowNotification(new GUIContent($"{asset.name} moved in {group_item.group.name}"));
+                        }
+                        else if (error == ContentDatabase.AssetError.GroupOnlyForScenes)
+                        {
+                            Window.ShowNotification(new GUIContent($"Group {group_item.displayName} group can only contain scenes"));
+                        }
+                        else
+                        {
+                            Window.ShowNotification(new GUIContent($"{asset.name} moving failed! error: {error}"));
+                        }
+                    }
+                    else if (paths.Length > 1)
+                    {
+                        var group_item = args.parentItem as ContentDatabaseGroupTreeViewItem;
+
+                        var group = group_item != null ? group_item.group : ContentDatabase.Get().GetContentInfo().AddGroupOrFind("Shared");
+
+                        int added = 0;
+                        foreach (var path in paths)
+                        {
+                            var asset = AssetDatabase.LoadMainAssetAtPath(path);
+                            ContentDatabase.RemoveAsset(asset);
+                            var error = ContentDatabase.AddAsset(group, asset);
+                            if (error == ContentDatabase.AssetError.NoError)
+                            {
+                                added++;
+                            }
+                        }
+
+                        if (added > 0)
+                        {
+                            Window.ShowNotification(new GUIContent($"{added} assets moved in {group.name}"));
+                        }
+                    }
                 }
             }
 
@@ -262,11 +413,17 @@ public class ContentDatabaseEditor : EditorWindow
 
         protected override void RowGUI(RowGUIArgs args)
         {
-            if (ContentDatabase.Get().GetContentInfo().Assets.Count <= 0) { return; }
-
+            if (args.item is ContentDatabaseGroupTreeViewItem)
+            {
+                base.RowGUI(args);
+            }
             for (int i = 0; i < args.GetNumVisibleColumns(); ++i)
             {
-                CellGUI(args.GetCellRect(i), args.item as ContentDatabaseAssetInfoTreeViewItem, args.GetColumn(i), ref args);
+                if (args.item is ContentDatabaseAssetInfoTreeViewItem)
+                {
+                    var rect = args.GetCellRect(i);
+                    CellGUIForAssets(rect, args.item as ContentDatabaseAssetInfoTreeViewItem, args.GetColumn(i), ref args);
+                }
             }
         }
 
@@ -322,15 +479,17 @@ public class ContentDatabaseEditor : EditorWindow
             return new MultiColumnHeaderState(retVal);
         }
 
-        void CellGUI(Rect cellRect, ContentDatabaseAssetInfoTreeViewItem item, int column, ref RowGUIArgs args)
+        void CellGUIForAssets(Rect cellRect, ContentDatabaseAssetInfoTreeViewItem item, int column, ref RowGUIArgs args)
         {
             switch (column)
             {
                 case 0:
                     {
-                        var iconRect = new Rect(cellRect.x + 1, cellRect.y + 1, cellRect.height - 2, cellRect.height - 2);
+                        var iconRect = new Rect(cellRect.x + 1 + 20, cellRect.y + 1, cellRect.height - 2, cellRect.height - 2);
                         if (item.icon != null)
+                        {
                             GUI.DrawTexture(iconRect, item.icon, ScaleMode.ScaleToFit);
+                        }
                         DefaultGUI.Label(
                             new Rect(cellRect.x + iconRect.xMax + 1, cellRect.y, cellRect.width - iconRect.width, cellRect.height),
                             item.displayName,
@@ -351,24 +510,24 @@ public class ContentDatabaseEditor : EditorWindow
                 case 4:
                     var sz = item.size;
                     var sz_s = string.Empty;
-                    if(sz < 1024)
+                    if (sz < 1024)
                     {
                         sz_s = $"{sz} b";
                     }
 
                     if (sz >= 1024)
                     {
-                        sz_s = $"{sz/1024} kb";
+                        sz_s = $"{sz / 1024} kb";
                     }
 
                     if (sz >= 1024 * 1024)
                     {
-                        sz_s = $"{sz/1024/1024} mb";
+                        sz_s = $"{sz / 1024 / 1024} mb";
                     }
 
                     if (sz >= 1024 * 1024 * 1024)
                     {
-                        sz_s = $"{sz/1024/1024} gb";
+                        sz_s = $"{sz / 1024 / 1024} gb";
                     }
 
                     DefaultGUI.Label(cellRect, sz_s, args.selected, args.focused);
@@ -376,6 +535,20 @@ public class ContentDatabaseEditor : EditorWindow
             }
         }
 
+        protected override bool CanChangeExpandedState(TreeViewItem item)
+        {
+            if (item != null)
+            {
+                if (item is ContentDatabaseGroupTreeViewItem)
+                {
+                    var group_item = item as ContentDatabaseGroupTreeViewItem;
+                    var result = group_item != null && group_item.group != null && group_item.group.Assets.Count > 0;
+                    return result;
+                }
+            }
+
+            return false;
+        }
 
         protected override bool CanRename(TreeViewItem item)
         {
@@ -384,27 +557,48 @@ public class ContentDatabaseEditor : EditorWindow
 
         protected override void RenameEnded(RenameEndedArgs args)
         {
-            if (args.itemID == int.MinValue)
-            {
-                return;
-            }
-
             base.RenameEnded(args);
 
             if (args.newName.Length > 0 && args.newName != args.originalName)
             {
-                if (!ContentDatabase.TryGetAssetInfoByName(args.newName, out var asset))
+                var renamedItem = FindItem(args.itemID, rootItem);
+
+                if (renamedItem is ContentDatabaseAssetInfoTreeViewItem)
                 {
-                    var renamedItem = FindItem(args.itemID, rootItem) as ContentDatabaseAssetInfoTreeViewItem;
-                    renamedItem.asset.name = args.newName;
-                    args.acceptedRename = true;
-                    Reload();
-                    ContentDatabase.Save();
+                    if (!ContentDatabase.TryGetAssetInfoByName(args.newName, out var asset))
+                    {
+                        var asset_item = FindItem(args.itemID, rootItem) as ContentDatabaseAssetInfoTreeViewItem;
+                        asset_item.asset.name = args.newName;
+                        args.acceptedRename = true;
+                        Reload();
+                        ContentDatabase.Save();
+                    }
+                    else
+                    {
+                        Window.ShowNotification(new GUIContent($"Asset with that short name already exists"), 3);
+                        args.acceptedRename = false;
+                    }
                 }
-                else
+
+                if (renamedItem is ContentDatabaseGroupTreeViewItem)
                 {
-                    Window.ShowNotification(new GUIContent($"Asset with that short name already exists"), 3);
-                    args.acceptedRename = false;
+                    if (!ContentDatabase.Get().GetContentInfo().TryGetGroup(args.newName, out var group))
+                    {
+                        var group_item = FindItem(args.itemID, rootItem) as ContentDatabaseGroupTreeViewItem;
+                        group_item.group.name = args.newName;
+                        args.acceptedRename = true;
+                        Reload();
+                        ContentDatabase.Save();
+                    }
+                    else
+                    {
+                        Window.ShowNotification(new GUIContent($"Group with that name already exists"), 3);
+                        var group_item = FindItem(args.itemID, rootItem) as ContentDatabaseGroupTreeViewItem;
+                        group_item.group.name = args.newName+"_1";
+                        args.acceptedRename = true;
+                        Reload();
+                        ContentDatabase.Save();
+                    }
                 }
             }
             else
@@ -413,50 +607,121 @@ public class ContentDatabaseEditor : EditorWindow
             }
         }
 
-        protected override void ContextClickedItem(int id)
+        private bool m_ContextOnItem = false;
+
+        protected override void ContextClicked()
         {
-            if (id == int.MinValue)
+            if (m_ContextOnItem)
             {
+                m_ContextOnItem = false;
                 return;
             }
 
             GenericMenu menu = new GenericMenu();
 
+            menu.AddItem(new GUIContent("New Group"), false, delegate
+            {
+                ContentDatabase.Get().GetContentInfo().AddGroup("New Group_" + ContentDatabase.Get().GetContentInfo().Groups.Count);
+                Reload();
+            });
+
+            menu.ShowAsContext();
+        }
+
+        protected override void ContextClickedItem(int id)
+        {
+            m_ContextOnItem = true;
+
+            var clickItem = FindItem(id, rootItem);
+
+            GenericMenu menu = new GenericMenu();
+
             if (!m_IsMultiSelected)
             {
-                menu.AddItem(new GUIContent("Add dependencies"), false, delegate
+                if (clickItem is ContentDatabaseAssetInfoTreeViewItem)
                 {
-                    ContentDatabase.AddDependenciesForAsset((FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem).asset, delegate { Reload(); });
-                });
-
-                menu.AddItem(new GUIContent("Rename"), false, delegate
-                {
-                    BeginRename(FindItem(id, rootItem));
-                });
-
-                menu.AddItem(new GUIContent("Delete"), false, delegate
-                {
-                    var item = FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem;
-
-                    if (ContentDatabase.TryGetAssetInfoByGUID(item.asset.guid, out var asset))
+                    menu.AddItem(new GUIContent("Add dependencies"), false, delegate
                     {
-                        ContentDatabase.RemoveAsset(asset.guid);
-                    }
+                        ContentDatabase.AddDependenciesForAsset((FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem).asset, delegate { Reload(); });
+                    });
 
-                    Reload();
-                });
+                    menu.AddItem(new GUIContent("Rename"), false, delegate
+                    {
+                        BeginRename(FindItem(id, rootItem));
+                    });
+
+                    menu.AddItem(new GUIContent("Delete"), false, delegate
+                    {
+                        var item = FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem;
+
+                        ContentDatabase.RemoveAsset(item.asset.guid);
+
+                        Reload();
+                    });
+                }
+                else if (clickItem is ContentDatabaseGroupTreeViewItem)
+                {
+                    menu.AddItem(new GUIContent("Build as Custom Content"), false, delegate
+                    {
+                        var group = (clickItem as ContentDatabaseGroupTreeViewItem).group;
+                        var folder = EditorUtility.SaveFolderPanel("Select folder for group", ContentDatabase.ContentFolder, group.name);
+                        ContentDatabase.Get().BuildContentCustom(folder, new List<ContentDatabase.ContentInfo.Group>() { group });
+                    });
+
+                    menu.AddItem(new GUIContent("Rename"), false, delegate
+                    {
+                        BeginRename(FindItem(id, rootItem));
+                    });
+                    menu.AddItem(new GUIContent("Delete"), false, delegate
+                    {
+                        var item = FindItem(id, rootItem) as ContentDatabaseGroupTreeViewItem;
+
+                        if (ContentDatabase.Get().GetContentInfo().TryRemoveGroup(item.group.name))
+                        {
+                            Window.ShowNotification(new GUIContent($"{item.group.name} removed"));
+                        }
+
+                        Reload();
+                    });
+                }
             }
             else
             {
+                menu.AddItem(new GUIContent("Build as Custom Content"), false, delegate
+                {
+                    var groups = new List<ContentDatabase.ContentInfo.Group>();
+                    foreach (var i in selectedIds)
+                    {
+                        var item = FindItem(i, rootItem);
+
+                        if (item is ContentDatabaseGroupTreeViewItem)
+                        {
+                            var group_ = (clickItem as ContentDatabaseGroupTreeViewItem).group;
+
+                            if (group_ != null)
+                            {
+                                groups.Add(group_);
+                            }
+                        }
+                    }
+
+                    var folder = EditorUtility.SaveFolderPanel("Select folder for groups", ContentDatabase.ContentFolder, "CustomContent");
+                    ContentDatabase.Get().BuildContentCustom(folder, groups);
+                });
+
                 menu.AddItem(new GUIContent("Delete"), false, delegate
                 {
                     foreach (var i in selectedIds)
                     {
-                        var item = FindItem(i, rootItem) as ContentDatabaseAssetInfoTreeViewItem;
+                        var item = FindItem(i, rootItem);
 
-                        if (ContentDatabase.TryGetAssetInfoByGUID(item.asset.guid, out var asset))
+                        if (item is ContentDatabaseAssetInfoTreeViewItem)
                         {
-                            ContentDatabase.RemoveAsset(asset.guid);
+                            ContentDatabase.RemoveAsset((item as ContentDatabaseAssetInfoTreeViewItem).asset.guid);
+                        }
+                        else if (item is ContentDatabaseGroupTreeViewItem)
+                        {
+                            ContentDatabase.Get().GetContentInfo().TryRemoveGroup((item as ContentDatabaseGroupTreeViewItem).group.name);
                         }
                     }
 
@@ -469,9 +734,9 @@ public class ContentDatabaseEditor : EditorWindow
     }
 }
 
-static class ContentDatabaseEditorOrderExtensions
+static class ContentDatabaseEditorExtensions
 {
-    internal static IOrderedEnumerable<T> Order<T, TKey>(this IEnumerable<T> source, System.Func<T, TKey> selector, bool ascending)
+    internal static IOrderedEnumerable<T> Order<T, TKey>(this IEnumerable<T> source, Func<T, TKey> selector, bool ascending)
     {
         if (ascending)
         {
@@ -483,7 +748,7 @@ static class ContentDatabaseEditorOrderExtensions
         }
     }
 
-    internal static IOrderedEnumerable<T> ThenBy<T, TKey>(this IOrderedEnumerable<T> source, System.Func<T, TKey> selector, bool ascending)
+    internal static IOrderedEnumerable<T> ThenBy<T, TKey>(this IOrderedEnumerable<T> source, Func<T, TKey> selector, bool ascending)
     {
         if (ascending)
         {

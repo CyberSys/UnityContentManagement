@@ -23,360 +23,124 @@ public partial class ContentDatabase : ScriptableObject
 
     public const string ContentFolderName = "Content";
 
+    public const string ContentInfoFileName = "Content.json";
+
     public static string ContentFolder { get { return Path.Combine(Environment.CurrentDirectory, ContentFolderName); } }
-    public static string ContentDBPath { get { return Path.Combine(Environment.CurrentDirectory, ContentFolderName, "Content.json"); } }
+    public static string ContentDBPath { get { return Path.Combine(Environment.CurrentDirectory, ContentFolderName, ContentInfoFileName); } }
 
     [Serializable]
     public class ContentInfo
     {
-        [SerializeField]
-        private List<AssetInfo> m_Assets = new List<AssetInfo>();
 
-        [SerializeField]
-        private List<BundleInfo> m_Chains = new List<BundleInfo>();
+        [Serializable]
+        public class Group
+        {
+            public string name;
+            public List<AssetInfo> Assets = new List<AssetInfo>();
 
-        public List<AssetInfo> Assets => m_Assets;
-        public List<BundleInfo> Chains => m_Chains;
+#if UNITY_EDITOR
+            public bool IsSceneGroup()
+            {
+                int scenes = 0;
+                for(int i = 0; i < Assets.Count; i++)
+                {
+                    if(Assets[i].type == "SceneAsset")
+                    {
+                        scenes++;
+                    }
+                }
+                return scenes > 0;
+            }
+#endif
+        }
+
+        public List<Group> Groups = new List<Group>(); 
+
+        public bool TryGetGroup(string name, out Group out_group)
+        {
+            out_group = null;
+
+            for(var i = 0; i < Groups.Count; i++)
+            {
+                if (Groups[i] == null)
+                    continue;
+
+                var group = Groups[i];
+
+                if (group.name == name)
+                {
+                    out_group = group;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool AddGroup(string name, out ContentInfo.Group out_group)
+        {
+            out_group = null;
+            if(!TryGetGroup(name, out out_group))
+            {
+                var group = new Group();
+                group.name = name;
+                Groups.Add(group);
+                return true;
+            }
+            return false;
+        }
+
+        public Group AddGroup(string name)
+        {
+            if (!TryGetGroup(name, out var out_group))
+            {
+                var group = new Group();
+                group.name = name;
+                Groups.Add(group);
+                return group;
+            }
+            return null;
+        }
+
+        public Group AddGroupOrFind(string name)
+        {
+            if (!TryGetGroup(name, out var out_group))
+            {
+                var group = new Group();
+                group.name = name;
+                Groups.Add(group);
+                return group;
+            }
+            return out_group;
+        }
+
+        public bool TryRemoveGroup(string name)
+        {
+            for (var i = 0; i < Groups.Count; i++)
+            {
+                if (Groups[i] == null)
+                    continue;
+
+                var group = Groups[i];
+
+                if (group.name == name)
+                {
+                    Groups.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public List<BundleInfo> Bundles = new List<BundleInfo>();
     }
 
-    [HideInInspector]
     [SerializeField]
     private ContentInfo m_ContentInfo = new ContentInfo();
 
     public ContentInfo GetContentInfo() { return m_ContentInfo; }
 
-    public static int Assets => Get().m_ContentInfo.Assets.Count;
-
-    public AssetInfo this[int index]
-    {
-        get
-        {
-            return m_ContentInfo.Assets[index];
-        }
-    }
-
-#if UNITY_EDITOR
-    public enum BundlePlaceMode
-    {
-        OnlyGUID,
-        OnlyGUIDWithoutExtension,
-		GUID_Type,
-        Name_Type,
-        Name,
-        RawPath
-    }
-
-	[Header("Use Editor Database")]
-    public bool UseEditorDatabase = false;
-
-#pragma warning disable CS0414
-    [SerializeField]
-    private BundlePlaceMode bundleNameMode = BundlePlaceMode.Name_Type;
-#pragma warning restore CS0414
-
-    [Header("Bundle File Extension")]
-    [SerializeField]
-    private string Extension = "bundle";
-
-    [Header("Force Rebuild <color=red>(slow!!)</color>")]
-    [SerializeField]
-    private bool ForceRebuild = true;
-
-    public enum CompressionType
-    {
-        Uncompressed,
-        LZMA,
-        LZ4
-    }
-
-    [Header("Compression Mode")]
-    [Header("Uncompressed <color=green>(speed++)</color> <color=red>(size++)</color>")]
-    [Header("LZ4 <color=yellow>(speed+) (size-)</color>")]
-    [Header("LZMA <color=red>(speed--)</color> <color=green>(size--)")]
-    [SerializeField]
-    private CompressionType Compression = CompressionType.Uncompressed;
-
-    [Header("Don't write engine version")]
-    [SerializeField]
-    private bool StripUnityVersion = false;
-
-    [Header("Remove .manifest")]
-    [SerializeField]
-    private bool RemoveManifest = false;
-
-    [Header("Clear the content directory before building")]
-    [SerializeField]
-    private bool ClearContentDirectory = false;
-
-    [Header("Bundles building target")]
-    [SerializeField]
-    private BuildTarget buildTarget = BuildTarget.StandaloneWindows;
-#endif
-
-    void ClearDirectory(string target_dir)
-    {
-        string[] files = Directory.GetFiles(target_dir);
-        string[] dirs = Directory.GetDirectories(target_dir);
-
-        foreach (string file in files)
-        {
-            File.SetAttributes(file, FileAttributes.Normal);
-            File.Delete(file);
-        }
-
-        foreach (string dir in dirs)
-        {
-            ClearDirectory(dir);
-        }
-    }
-
-    [ContextMenu("CheckAndClearAssets")]
-    public void CheckAndClearAssets()
-    {
-#if UNITY_EDITOR
-        for(int i = 0; i < m_ContentInfo.Assets.Count; i++)
-        {
-            if(m_ContentInfo.Assets[i] == null)
-            {
-                m_ContentInfo.Assets.RemoveAt(i);
-                continue;
-            }
-            var error = CheckAsset(
-                AssetDatabase.LoadMainAssetAtPath(m_ContentInfo.Assets[i].path),
-                out var blob1, out var blob2, out var blob3);
-            if (error != AssetError.NoError)
-            {
-                m_ContentInfo.Assets.RemoveAt(i);
-                Debug.LogWarning($"Asset {m_ContentInfo.Assets[i].name} excluded from database! | {error}");
-            }
-        }
-#endif
-    }
-
-    [ContextMenu("Reset")]
-    void blob1()
-    {
-
-    }
-
-    [ContextMenu("BuildContent")]
-    public async void BuildContent()
-    {
-#if UNITY_EDITOR
-
-        AssetDatabase.SaveAssets();
-
-        try
-        {
-            var db = Get();
-
-            var bundles = new List<AssetBundleBuild>();
-
-            Dictionary<string, string> temp_GUID_AssetBundleName = new Dictionary<string, string>();
-
-            EditorUtility.DisplayProgressBar("ContentDatabase -> Preparing...", "...", 0);
-
-            for (var i = 0; i < Assets; i++)
-            {
-                if (db[i] == null)
-                {
-                    continue;
-                }
-                var bundle = new AssetBundleBuild();
-                bundle.assetBundleName = db[i].guid;
-                {
-                    string ext = Extension;
-
-                    if (bundleNameMode == BundlePlaceMode.Name_Type)
-                    {
-                        string s_t = db[i].type;
-                        string b_t = db[i].base_type;
-
-                        if (s_t == nameof(GameObject))
-                        {
-                            s_t = "Object";
-                        }
-
-                        if (b_t == nameof(ScriptableObject))
-                        {
-                            s_t = "Scriptable";
-                        }
-
-                        var s = $"{db[i].name}_{s_t}.{ext}";
-
-                        //check name dubl
-                        foreach (var kvp in temp_GUID_AssetBundleName)
-                        {
-                            if (kvp.Value == s)
-                            {
-                                s = $"{db[i].name}_{s_t}_{db[i].guid}.{ext}";
-                            }
-                        }
-
-                        temp_GUID_AssetBundleName.Add(db[i].guid, s);
-                    }
-					
-					if (bundleNameMode == BundlePlaceMode.GUID_Type)
-                    {
-                        string s_t = db[i].type;
-						string b_t = db[i].base_type;
-                        if (s_t == nameof(GameObject))
-                        {
-                            s_t = "Object";
-                        }
-
-                        if (b_t == nameof(ScriptableObject))
-                        {
-                            s_t = "Scriptable";
-                        }
-
-                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}_{s_t}.{ext}");
-                    }
-
-                    if (bundleNameMode == BundlePlaceMode.OnlyGUID)
-                    {
-                        temp_GUID_AssetBundleName.Add(db[i].guid, $"{db[i].guid}.{ext}");
-                    }
-
-                    if (bundleNameMode == BundlePlaceMode.OnlyGUIDWithoutExtension)
-                    {
-                        temp_GUID_AssetBundleName.Add(db[i].guid, db[i].guid);
-                    }
-
-
-                    if (bundleNameMode == BundlePlaceMode.Name)
-                    {
-                        var s = $"{db[i].name}.{ext}";
-
-                        //check name dubl
-                        foreach (var kvp in temp_GUID_AssetBundleName)
-                        {
-                            if (kvp.Value == s)
-                            {
-                                s = $"{db[i].name}_{db[i].guid}.{ext}";
-                            }
-                        }
-
-                        temp_GUID_AssetBundleName.Add(db[i].guid, s);
-                    }
-
-                    if (bundleNameMode == BundlePlaceMode.RawPath)
-                    {
-                        var wo_ext = Path.ChangeExtension(db[i].path, Extension);
-                        temp_GUID_AssetBundleName.Add(db[i].guid, wo_ext);
-                    }
-
-                    EditorUtility.DisplayProgressBar("ContentDatabase -> Checking by bundle name mode", $"{db[i].path} -> {temp_GUID_AssetBundleName[db[i].guid]}", (float)i / (float)Assets);
-                    await Task.Yield();
-                }
-
-                bundle.assetNames = new string[1];
-                bundle.assetNames[0] = db[i].path;
-                bundle.addressableNames = new string[1];
-                bundle.addressableNames[0] = db[i].guid;
-                bundles.Add(bundle);
-            }
-
-            if (!Directory.Exists(ContentFolder))
-            {
-                Directory.CreateDirectory(ContentFolder);
-            }
-            else if (ClearContentDirectory)
-            {
-                ClearDirectory(ContentFolder);
-            }
-
-            var bopt = BuildAssetBundleOptions.None;
-
-            if (Compression == CompressionType.Uncompressed)
-            {
-                bopt |= BuildAssetBundleOptions.UncompressedAssetBundle;
-            }
-            else if (Compression == CompressionType.LZ4)
-            {
-                bopt |= BuildAssetBundleOptions.ChunkBasedCompression;
-            }
-            else if (Compression == CompressionType.LZMA)
-            {
-                bopt |= BuildAssetBundleOptions.None;
-            }
-
-            if (StripUnityVersion)
-            {
-                bopt |= BuildAssetBundleOptions.AssetBundleStripUnityVersion;
-            }
-
-            if (ForceRebuild)
-            {
-                bopt |= BuildAssetBundleOptions.ForceRebuildAssetBundle;
-            }
-
-            var manifest = CompatibilityBuildPipeline.BuildAssetBundles(ContentFolder, bundles.ToArray(), bopt, buildTarget);
-
-            if (manifest != null)
-            {
-                //Building chains
-                EditorUtility.DisplayProgressBar("ContentDatabase -> Generating", "Generating loading chains", 0.5f);
-                GenerateChains(manifest);
-
-                //moving files
-                if (Get().bundleNameMode == BundlePlaceMode.Name || Get().bundleNameMode == BundlePlaceMode.Name_Type || Get().bundleNameMode == BundlePlaceMode.RawPath || Get().bundleNameMode == BundlePlaceMode.GUID_Type)
-                {
-                    int i = 0;
-                    foreach (var dictionary in temp_GUID_AssetBundleName)
-                    {
-                        EditorUtility.DisplayProgressBar("ContentDatabase -> Renaming files", $"Renaming file: {dictionary.Key} -> {dictionary.Value}", (float)i / (float)temp_GUID_AssetBundleName.Count);
-                        var file_path_with_guid = Path.Combine(ContentFolder, dictionary.Key);
-                        if (File.Exists(file_path_with_guid))
-                        {
-                            string new_file_path = Path.Combine(ContentFolder, dictionary.Value);
-
-                            if (File.Exists(new_file_path))
-                            {
-                                File.Delete(new_file_path);
-                            }
-
-                            if (Get().bundleNameMode == BundlePlaceMode.RawPath)
-                            {
-                                var dir = Path.GetDirectoryName(new_file_path);
-                                if (!Directory.Exists(dir))
-                                {
-                                    Directory.CreateDirectory(dir);
-                                }
-                            }
-
-                            File.Move(file_path_with_guid, new_file_path);
-                        }
-                    }
-                }
-                EditorUtility.DisplayProgressBar("ContentDatabase -> Renaming files", "Fixing names in chains by file names", 0.7f);
-                RenameDependencyChains(temp_GUID_AssetBundleName);
-            }
-            else
-            {
-                return;
-            }
-
-            if (RemoveManifest)
-            {
-                var manifests = Directory.GetFiles(ContentFolder, "*.manifest*");
-
-                for (var i = 0; i < manifests.Length; i++)
-                {
-                    File.Delete(manifests[i]);
-                }
-            }
-
-            File.WriteAllText(ContentDBPath, JsonUtility.ToJson(m_ContentInfo, true));
-            EditorUtility.ClearProgressBar();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogException(ex);
-            EditorUtility.ClearProgressBar();
-        }
-#endif
-    }
 
     /* IO */
     public const string DBFolder = "Assets/ContentManagement/";
@@ -442,8 +206,10 @@ public partial class ContentDatabase : ScriptableObject
         IsUnsupportedType,
         HasHideFlags,
         IsEditorAsset,
+        GroupOnlyForScenes,
+        GroupIsNull,
         IsAlreadyContainsAsset,
-        IsSceneAsset,
+        CantIncludeAssetFromScene,
         MissingAsset
     }
 
@@ -527,8 +293,33 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (go.scene.IsValid())
                 {
-                    return AssetError.IsSceneAsset;
+                    return AssetError.CantIncludeAssetFromScene;
                 }
+            }
+
+            if (asset.GetType() == typeof(LightingSettings))
+            {
+                return AssetError.IsUnsupportedType;
+            }
+
+            if (asset.GetType() == typeof(LightingDataAsset))
+            {
+                return AssetError.IsUnsupportedType;
+            }
+
+            if (asset.name == "OcclusionCullingData")
+            {
+                return AssetError.IsUnsupportedType;
+            }
+
+            if (asset.GetType() == typeof(UnityEditor.Presets.Preset))
+            {
+                return AssetError.IsUnsupportedType;
+            }
+            
+            if (asset.GetType() == typeof(UnityEngine.Rendering.ProbeReferenceVolumeProfile))
+            {
+                return AssetError.IsUnsupportedType;
             }
 
             if (asset.GetType() == typeof(MonoScript))
@@ -570,7 +361,9 @@ public partial class ContentDatabase : ScriptableObject
         int i = 0;
         foreach (var dep in deps)
         {
-            var dep_error = AddAsset(AssetDatabase.LoadMainAssetAtPath(dep));
+
+            var asset_obj = AssetDatabase.LoadMainAssetAtPath(dep);
+            var dep_error = AddAsset(Get().GetContentInfo().AddGroupOrFind($"{asset.name}_shared"), asset_obj);
             EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {dep} dependency of {asset.path}", (float)i/deps.Length);
             i++;
             await Task.Yield();
@@ -580,8 +373,12 @@ public partial class ContentDatabase : ScriptableObject
     }
 
     /* Object */
-    public static AssetError AddAsset(Object asset)
+    public static AssetError AddAsset(ContentInfo.Group group, Object asset)
     {
+        if(group == null)
+        {
+            return AssetError.GroupIsNull;
+        }
         if (!Contains(asset))
         {
             var error = Get().CheckAsset(asset, out string guid, out string path, out Type type);
@@ -589,12 +386,16 @@ public partial class ContentDatabase : ScriptableObject
 
             if (error == AssetError.NoError)
             {
+                if (group.IsSceneGroup() && type != typeof(SceneAsset))
+                {
+                    return AssetError.GroupOnlyForScenes;
+                }
                 if (asset is ScriptableObject)
                 {
                     type = typeof(ScriptableObject);
                 }
 
-                Get().m_ContentInfo.Assets.Add(new AssetInfo() 
+                group.Assets.Add(new AssetInfo() 
                 { 
                     name = asset_name, 
                     guid = guid, 
@@ -605,9 +406,9 @@ public partial class ContentDatabase : ScriptableObject
 
                 Save();
             }
-            else if(error == AssetError.HasHideFlags)
+            else
             {
-                LogWarning($"Asset {asset.name} has hide flags -> "+asset.hideFlags);
+                LogWarning($"Asset {asset.name} | error {error}");
             }
 
             return error;
@@ -641,24 +442,26 @@ public partial class ContentDatabase : ScriptableObject
     {
         if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string guid, out long localId))
         {
-            for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
-            {
-                if (Get().m_ContentInfo.Assets[i].guid == guid)
-                {
-                    Get().m_ContentInfo.Assets.RemoveAt(i);
-                }
-            }
+            RemoveAsset(guid);
         }
     }
 #endif
 
     public static void RemoveAsset(string asset_guid)
     {
-        for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
-            if (Get().m_ContentInfo.Assets[i].guid == asset_guid)
+            var group = Get().m_ContentInfo.Groups[a];
+
+            if (group != null)
             {
-                Get().m_ContentInfo.Assets.RemoveAt(i);
+                for (int i = 0; i < group.Assets.Count; i++)
+                {
+                    if (group.Assets[i].guid == asset_guid)
+                    {
+                        group.Assets.RemoveAt(i);
+                    }
+                }
             }
         }
     }
@@ -668,11 +471,19 @@ public partial class ContentDatabase : ScriptableObject
     {
         if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string guid, out long localId))
         {
-            for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+            for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
             {
-                if (Get().m_ContentInfo.Assets[i].guid == guid)
+                var group = Get().m_ContentInfo.Groups[a];
+
+                if (group == null)
+                    continue;
+
+                for (int i = 0; i < group.Assets.Count; i++)
                 {
-                    return true;
+                    if (group.Assets[i].guid == guid)
+                    {
+                        return true;
+                    }
                 }
             }
         }
@@ -683,11 +494,42 @@ public partial class ContentDatabase : ScriptableObject
 
     public static bool Contains(string guid)
     {
-        for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
-            if (Get().m_ContentInfo.Assets[i].guid == guid)
+            var group = Get().m_ContentInfo.Groups[a];
+
+            if (group == null)
+                continue;
+
+            for (int i = 0; i < group.Assets.Count; i++)
             {
-                return true;
+                if (group.Assets[i].guid == guid)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public static bool Exists(string guid, out ContentInfo.Group out_group)
+    {
+        out_group = null;
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
+        {
+            var group = Get().m_ContentInfo.Groups[a];
+
+            if (group == null)
+                continue;
+
+            for (int i = 0; i < group.Assets.Count; i++)
+            {
+                if (group.Assets[i].guid == guid)
+                {
+                    out_group = group;
+                    return true;
+                }
             }
         }
 
@@ -695,17 +537,26 @@ public partial class ContentDatabase : ScriptableObject
     }
 
 #if UNITY_EDITOR
-    public static bool Contains(Object asset, out AssetInfo info)
+    public static bool Contains(Object asset, out ContentInfo.Group group, out AssetInfo info)
     {
         info = null;
+        group = null;
         if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string guid, out long localId))
         {
-            for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+            for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
             {
-                if (Get().m_ContentInfo.Assets[i].guid == guid)
+                group = Get().m_ContentInfo.Groups[a];
+
+                if (group != null)
                 {
-                    info = Get().m_ContentInfo.Assets[i];
-                    return true;
+                    for (int i = 0; i < group.Assets.Count; i++)
+                    {
+                        if (group.Assets[i].guid == guid)
+                        {
+                            info = group.Assets[i];
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -714,31 +565,24 @@ public partial class ContentDatabase : ScriptableObject
     }
 #endif
 
-    public static bool Contains(string guid, out AssetInfo info)
+    public static bool FindAsset(string guid, out ContentInfo.Group group, out AssetInfo info)
     {
         info = null;
-        for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+        group = null;
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
-            if (Get().m_ContentInfo.Assets[i].guid == guid)
+            group = Get().m_ContentInfo.Groups[a];
+
+            if (group == null)
+                continue;
+
+            for (int i = 0; i < group.Assets.Count; i++)
             {
-                info = Get().m_ContentInfo.Assets[i];
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public static bool TryGetAssetInfo(int index, out AssetInfo info)
-    {
-        info = null;
-
-        if (index >= 0)
-        {
-            if (index < Get().m_ContentInfo.Assets.Count)
-            {
-                info = Get().m_ContentInfo.Assets[index];
-                return true;
+                if (group.Assets[i].guid == guid)
+                {
+                    info = group.Assets[i];
+                    return true;
+                }
             }
         }
 
@@ -765,12 +609,18 @@ public partial class ContentDatabase : ScriptableObject
     public static bool TryGetAssetInfoByName(string name, out AssetInfo info, StringComparison stringComparison = StringComparison.Ordinal)
     {
         info = null;
-        for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
-            if (TryGetAssetInfo(i, out info))
+            var group = Get().m_ContentInfo.Groups[a];
+
+            if (group == null)
+                continue;
+
+            for (int i = 0; i < group.Assets.Count; i++)
             {
-                if (info.name == name)
+                if (group.Assets[i].name == name)
                 {
+                    info = group.Assets[i];
                     return true;
                 }
             }
@@ -781,28 +631,42 @@ public partial class ContentDatabase : ScriptableObject
     public static bool TryGetAssetInfoByNameAndType<T>(string name, Type type, out AssetInfo info, StringComparison stringComparison = StringComparison.Ordinal)
     {
         info = null;
-        for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
-            if (TryGetAssetInfo(i, out info))
+            var group = Get().m_ContentInfo.Groups[a];
+
+            if (group == null)
+                continue;
+
+            for (int i = 0; i < group.Assets.Count; i++)
             {
-                if (info.name == name && info.type == type.Name)
+                if (group.Assets[i].name == name && info.type == type.Name)
                 {
+                    info = group.Assets[i];
                     return true;
                 }
             }
         }
+
         return false;
     }
 
     public static bool TryGetAssetInfoByPath(string path, out AssetInfo info, StringComparison stringComparison = StringComparison.Ordinal)
     {
         info = null;
-        for (int i = 0; i < Get().m_ContentInfo.Assets.Count; i++)
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
-            if (TryGetAssetInfo(i, out info))
+            var group = Get().m_ContentInfo.Groups[a];
+
+            if (group == null)
+                continue;
+
+            for (int i = 0; i < group.Assets.Count; i++)
             {
-                if (info.path == path)
+                if (group.Assets[i].path == path)
                 {
+                    info = group.Assets[i];
                     return true;
                 }
             }
@@ -813,34 +677,24 @@ public partial class ContentDatabase : ScriptableObject
     public static bool TryGetAssetInfoByGUID(string guid, out AssetInfo info)
     {
         info = null;
-        for (int i = 0; i < Assets; i++)
-        {
-            if (TryGetAssetInfo(i, out info))
-            {
-                if (info.guid == guid)
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
 
-    public static bool TryGetAssetInfoByGUID(string guid, out AssetInfo info, out int index)
-    {
-        index = -1;
-        info = null;
-        for (int i = 0; i < Assets; i++)
+        for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
-            if (TryGetAssetInfo(i, out info))
+            var group = Get().m_ContentInfo.Groups[a];
+
+            if (group == null)
+                continue;
+
+            for (int i = 0; i < group.Assets.Count; i++)
             {
-                if (info.guid == guid)
+                if (group.Assets[i].guid == guid)
                 {
-                    index = i;
+                    info = group.Assets[i];
                     return true;
                 }
             }
         }
+
         return false;
     }
 

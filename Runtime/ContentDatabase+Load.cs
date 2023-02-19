@@ -21,7 +21,7 @@ public partial class ContentDatabase : ScriptableObject
 #endif
 
         CoroutineQueueExecute.PushToQueue(Coroutine_LoadBundle(assetInfo,
-        delegate (Status status, string name, float progress, AssetBundle bundle, BundleInfo chain)
+        delegate (Status status, string name, float progress, AssetBundle bundle, IBundleInfo chain)
         {
             if (status != Status.BundleReady)
             {
@@ -110,7 +110,7 @@ public partial class ContentDatabase : ScriptableObject
             }
 
             CoroutineQueueExecute.PushToQueue(Coroutine_LoadBundle(info,
-            delegate (Status status, string name, float progress, AssetBundle bundle, BundleInfo chain)
+            delegate (Status status, string name, float progress, AssetBundle bundle, IBundleInfo chain)
             {
                 if (status != Status.BundleReady)
                 {
@@ -183,7 +183,7 @@ public partial class ContentDatabase : ScriptableObject
         }
     }
 
-    public Dictionary<BundleInfo, LoadedAssetBundle> loadedAssetBundles = new Dictionary<BundleInfo, LoadedAssetBundle>();
+    public Dictionary<IBundleInfo, LoadedAssetBundle> loadedAssetBundles = new Dictionary<IBundleInfo, LoadedAssetBundle>();
 
     public static void UnloadAll(bool unloadObjects = false)
     {
@@ -366,27 +366,39 @@ public partial class ContentDatabase : ScriptableObject
         yield break;
     }
 
-    public static IEnumerator Coroutine_LoadBundle(AssetInfo info, Action<Status, string, float, AssetBundle, BundleInfo> Event)
+    public static IEnumerator Coroutine_LoadBundle(AssetInfo info, Action<Status, string, float, AssetBundle, IBundleInfo> Event)
     {
         //build dependencies order of main bundle
-        var dependencies_list = new List<BundleInfo>();
+        var dependencies_list_to_load = new List<DependencyBundleInfo>();
 
-        BundleInfo chain;
-        if (Get().TryGetChain(info.guid, out chain))
+        IBundleInfo bundle;
+        if (FindAsset(info.guid, out var group, out var asset))
         {
-            dependencies_list.AddRange(chain.Dependencies);
+            Log($"Asset {info.name} found in group {group.name}");
+            if (Get().TryGetBundle(group, out bundle))
+            {
+                for(var dependency_index = 0; dependency_index < bundle.GetDependencies().Count; dependency_index++)
+                {
+                    dependencies_list_to_load.Add(bundle.GetDependencies()[dependency_index]);
+                }
+            }
+            else
+            {
+                LogError($"Can't find bundle for group {group.name} of asset {info.name}");
+                yield break;
+            }
         }
         else
         {
-            Log($"Can't find chain {info.guid}");
+            LogError($"Can't find asset {info.name}");
             yield break;
         }
 
         //load main bundle
         AssetBundle main_bundle = null;
 
-        var main_bundle_path = Path.Combine(ContentFolder, chain.Name);
-        if (!Get().loadedAssetBundles.TryGetValue(chain, out LoadedAssetBundle loadedBundle))
+        var main_bundle_path = Path.Combine(ContentFolder, bundle.GetName());
+        if (!Get().loadedAssetBundles.TryGetValue(bundle, out LoadedAssetBundle loadedBundle))
         {
             if (File.Exists(main_bundle_path))
             {
@@ -402,7 +414,7 @@ public partial class ContentDatabase : ScriptableObject
                     {
                         try
                         {
-                            Event(Status.BundleLoading, chain.Name, operation.progress, null, chain);
+                            Event(Status.BundleLoading, bundle.GetName(), operation.progress, null, bundle);
                         }
                         catch { }
                         yield return null;
@@ -416,10 +428,10 @@ public partial class ContentDatabase : ScriptableObject
                             Log($"Loading {main_bundle_path} finished [Load time: {start_load_time} ms]");
 
                             main_bundle = operation.assetBundle;
-                            Get().loadedAssetBundles.Add(chain, new LoadedAssetBundle(chain.Name, main_bundle));
+                            Get().loadedAssetBundles.Add(bundle, new LoadedAssetBundle(bundle.GetName(), main_bundle));
                             try
                             {
-                                Event(Status.BundleLoaded, chain.Name, operation.progress, main_bundle, chain);
+                                Event(Status.BundleLoaded, bundle.GetName(), operation.progress, main_bundle, bundle);
                             }
                             catch { }
                         }
@@ -428,7 +440,7 @@ public partial class ContentDatabase : ScriptableObject
                             LogError($"Bundle {main_bundle_path} loading error!");
                             try
                             {
-                                Event(Status.BundleLoadingError, chain.Name, 0, null, chain);
+                                Event(Status.BundleLoadingError, bundle.GetName(), 0, null, bundle);
                             }
                             catch { }
                             yield break;
@@ -440,7 +452,7 @@ public partial class ContentDatabase : ScriptableObject
                     LogError($"Bundle {main_bundle_path} loading error!");
                     try
                     {
-                        Event(Status.BundleLoadingError, chain.Name, 0, null, chain);
+                        Event(Status.BundleLoadingError, bundle.GetName(), 0, null, bundle);
                     }
                     catch { }
                     yield break;
@@ -451,7 +463,7 @@ public partial class ContentDatabase : ScriptableObject
                 LogError($"Bundle {main_bundle_path} not found!");
                 try
                 {
-                    Event(Status.BundleNotFound, chain.Name, 0, null, chain);
+                    Event(Status.BundleNotFound, bundle.GetName(), 0, null, bundle);
                 }
                 catch { }
 
@@ -461,68 +473,43 @@ public partial class ContentDatabase : ScriptableObject
         else
         {
             main_bundle = loadedBundle.AssetBundle;
-            LogWarning($"Bundle {main_bundle_path} of {chain.Name} skipped!");
+            LogWarning($"Bundle {main_bundle_path} of {bundle.GetName()} skipped!");
             try
             {
-                Event(Status.BundleSkipped, chain.Name, 0, main_bundle, chain);
+                Event(Status.BundleSkipped, bundle.GetName(), 0, main_bundle, bundle);
             }
             catch { }
         }
 
         int dependency_missing = 0;
         int dependency_ready = 0;
-        int dependency_count = dependencies_list.Count;
+        int dependency_count = dependencies_list_to_load.Count;
 
-        Log($"Tracking {dependency_count} dependencies for {chain.Name}");
+        Log($"Tracking {dependency_count} dependencies for {bundle.GetName()}");
 
         var dependencies_Load_time = Environment.TickCount;
         for (int i = 0; i < dependency_count; i++)
         {
-            var dependency_chain = dependencies_list[i];
-            
-            if(dependency_chain.AssetInfo.type == typeof(Material).Name)
-            {
-                continue;
-            }
+            var dependency_chain = dependencies_list_to_load[i];
 
-            if (dependency_chain.AssetInfo.type == typeof(Shader).Name)
-            {
-                continue;
-            }
-
-            if (dependency_chain.AssetInfo.type == typeof(ComputeShader).Name)
-            {
-                continue;
-            }
-
-            if (dependency_chain.AssetInfo.base_type == typeof(Texture).Name)
-            {
-                continue;
-            }
-
-            if (dependency_chain.AssetInfo.type == typeof(AudioClip).Name)
-            {
-                continue;
-            }
-
-            var dependency_path = Path.Combine(ContentFolder, dependency_chain.Name);
+            var dependency_path = Path.Combine(ContentFolder, dependency_chain.name);
 
             if (!Get().loadedAssetBundles.TryGetValue(dependency_chain, out LoadedAssetBundle loadedDependencyBundle))
             {
                 if (File.Exists(dependency_path))
                 {
-                    Log($"Dependency {dependency_path} of {chain.Name} found!");
+                    Log($"Dependency {dependency_path} of {bundle.GetName()} found!");
                     var start_load_time = DateTime.Now.Millisecond;
                     var operation = AssetBundle.LoadFromFileAsync(dependency_path);
 
                     if (operation != null)
                     {
-                        Log($"Loading {dependency_path} dependency of {chain.Name}");
+                        Log($"Loading {dependency_path} dependency of {bundle.GetName()}");
                         while (!operation.isDone)
                         {
                             try
                             {
-                                Event(Status.DependencyLoading, dependency_chain.Name, ((float)i / (float)dependency_count), null, dependency_chain);
+                                Event(Status.DependencyLoading, dependency_chain.name, ((float)i / (float)dependency_count), null, dependency_chain);
                             }
                             catch { }
                             yield return null;
@@ -536,22 +523,22 @@ public partial class ContentDatabase : ScriptableObject
 
                                 start_load_time = DateTime.Now.Millisecond - start_load_time;
 
-                                Log($"Loading {dependency_path} dependency of {chain.Name} finished [Load time: {start_load_time} ms]");
+                                Log($"Loading {dependency_path} dependency of {bundle.GetName()} finished [Load time: {start_load_time} ms]");
 
-                                Get().loadedAssetBundles.Add(dependency_chain, new LoadedAssetBundle(dependency_chain.Name, operation.assetBundle));
+                                Get().loadedAssetBundles.Add(dependency_chain, new LoadedAssetBundle(dependency_chain.name, operation.assetBundle));
 
                                 try
                                 {
-                                    Event(Status.DependencyLoaded, dependency_chain.Name, operation.progress, operation.assetBundle, dependency_chain);
+                                    Event(Status.DependencyLoaded, dependency_chain.name, operation.progress, operation.assetBundle, dependency_chain);
                                 }
                                 catch { }
                             }
                             else
                             {
-                                LogError($"Dependency {dependency_path} of {chain.Name} loading error!");
+                                LogError($"Dependency {dependency_path} of {bundle.GetName()} loading error!");
                                 try
                                 {
-                                    Event(Status.DependencyLoadingError, dependency_chain.Name, 0, null, dependency_chain);
+                                    Event(Status.DependencyLoadingError, dependency_chain.name, 0, null, dependency_chain);
                                 }
                                 catch { }
                             }
@@ -559,11 +546,11 @@ public partial class ContentDatabase : ScriptableObject
                     }
                     else
                     {
-                        LogError($"Dependency {dependency_path} of {chain.Name} loading error!");
+                        LogError($"Dependency {dependency_path} of {bundle.GetName()} loading error!");
 
                         try
                         {
-                            Event(Status.DependencyLoadingError, dependency_chain.Name, 0, null, dependency_chain);
+                            Event(Status.DependencyLoadingError, dependency_chain.name, 0, null, dependency_chain);
                         }
                         catch { }
                     }
@@ -571,39 +558,39 @@ public partial class ContentDatabase : ScriptableObject
                 else
                 {
                     dependency_missing++;
-                    LogError($"Dependency {dependency_path} of {chain.Name} not found!");
+                    LogError($"Dependency {dependency_path} of {bundle.GetName()} not found!");
 
                     try
                     {
-                        Event(Status.DependencyNotFound, dependency_chain.Name, 0, null, dependency_chain);
+                        Event(Status.DependencyNotFound, dependency_chain.name, 0, null, dependency_chain);
                     }
                     catch { }
                 }
             }
             else
             {
-                LogWarning($"Dependency {dependency_path} of {chain.Name} skipped!");
+                LogWarning($"Dependency {dependency_path} of {bundle.GetName()} skipped!");
                 try
                 {
-                    Event(Status.DependencySkipped, dependency_chain.Name, 0, loadedDependencyBundle.AssetBundle, dependency_chain);
+                    Event(Status.DependencySkipped, dependency_chain.name, 0, loadedDependencyBundle.AssetBundle, dependency_chain);
                 }
                 catch { }
             }
         }
 
         dependencies_Load_time = Environment.TickCount - dependencies_Load_time;
-        LogWarning($"Bundle {chain.Name} ready! [Dependencies Ready: {dependency_ready}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}] [Load time: {dependencies_Load_time} ms]");
+        LogWarning($"Bundle {bundle.GetName()} ready! [Dependencies Ready: {dependency_ready}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}] [Load time: {dependencies_Load_time} ms]");
 
         try
         {
-            Event(Status.BundleReady, chain.Name, 1, main_bundle, chain);
+            Event(Status.BundleReady, bundle.GetName(), 1, main_bundle, bundle);
         }
         catch { }
 
         yield break;
     }
 
-    static IEnumerator Coroutine_LoadAsset<T>(AssetInfo assetInfo, BundleInfo info, AssetBundle bundle, Action<Status, string, float, T> Event) where T : Object
+    static IEnumerator Coroutine_LoadAsset<T>(AssetInfo assetInfo, IBundleInfo info, AssetBundle bundle, Action<Status, string, float, T> Event) where T : Object
     {
 #if UNITY_EDITOR
 
@@ -642,7 +629,7 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (operation != null)
                 {
-                    Log($"Loading asset {assetInfo.name} from bundle {info.Name}");
+                    Log($"Loading asset {assetInfo.name} from bundle {info.GetName()}");
                     while (!operation.isDone)
                     {
                         try
@@ -655,7 +642,7 @@ public partial class ContentDatabase : ScriptableObject
 
                     if (operation.isDone)
                     {
-                        Log($"Loading asset {assetInfo.name} from bundle {info.Name} finished!");
+                        Log($"Loading asset {assetInfo.name} from bundle {info.GetName()} finished!");
 
                         try
                         {
@@ -669,7 +656,7 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
-        Log($"Asset {assetInfo.name} not found in bundle {info.Name}");
+        Log($"Asset {assetInfo.name} not found in bundle {info.GetName()}");
 
         try
         {
@@ -710,7 +697,7 @@ public partial class ContentDatabase : ScriptableObject
         }
     }
 
-    static IEnumerator Coroutine_LoadScene(AssetInfo assetInfo, BundleInfo info, AssetBundle bundle, Action<Status, string, float> Event, LoadSceneMode mode = LoadSceneMode.Single, bool activateOnLoad = true)
+    static IEnumerator Coroutine_LoadScene(AssetInfo assetInfo, IBundleInfo info, AssetBundle bundle, Action<Status, string, float> Event, LoadSceneMode mode = LoadSceneMode.Single, bool activateOnLoad = true)
     {
 #if UNITY_EDITOR
         if (Get().UseEditorDatabase)
@@ -723,7 +710,7 @@ public partial class ContentDatabase : ScriptableObject
 
             if (operation != null)
             {
-                Log($"Loading scene {assetInfo.name} from bundle {info.Name}");
+                Log($"Loading scene {assetInfo.name} from bundle {info.GetName()}");
                 while (!operation.isDone)
                 {
                     try
@@ -736,7 +723,7 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (operation.isDone)
                 {
-                    Log($"Loading scene {assetInfo.name} from bundle {info.Name} finished!");
+                    Log($"Loading scene {assetInfo.name} from bundle {info.GetName()} finished!");
 
                     try
                     {
@@ -752,7 +739,7 @@ public partial class ContentDatabase : ScriptableObject
 
         if (!bundle.isStreamedSceneAssetBundle)
         {
-            LogError($"Can't load scene {assetInfo.name}! Bundle {info.Name} only for load assets!");
+            LogError($"Can't load scene {assetInfo.name}! Bundle {info.GetName()} only for load assets!");
             try
             {
                 Event(Status.AssetLoadingError, assetInfo.name, 0);
@@ -768,7 +755,7 @@ public partial class ContentDatabase : ScriptableObject
 
                 if (operation != null)
                 {
-                    Log($"Loading scene {assetInfo.name} from bundle {info.Name}");
+                    Log($"Loading scene {assetInfo.name} from bundle {info.GetName()}");
                     while (!operation.isDone)
                     {
                         try
@@ -781,7 +768,7 @@ public partial class ContentDatabase : ScriptableObject
 
                     if (operation.isDone)
                     {
-                        Log($"Loading scene {assetInfo.name} from bundle {info.Name} finished!");
+                        Log($"Loading scene {assetInfo.name} from bundle {info.GetName()} finished!");
 
                         try
                         {
@@ -795,7 +782,7 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
-        Log($"Scene {assetInfo.name} not found in bundle {info.Name}");
+        Log($"Scene {assetInfo.name} not found in bundle {info.GetName()}");
 
         try
         {

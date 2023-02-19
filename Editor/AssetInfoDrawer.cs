@@ -98,7 +98,7 @@ class AssetInfoPopup : EditorWindow
 
     private void OnGUI()
     {
-        if (ContentDatabase.Assets > 0)
+        if (ContentDatabase.Get().GetContentInfo().Groups.Count > 0)
         {
             Rect rect = position;
 
@@ -215,13 +215,16 @@ class AssetInfoTreeView : TreeView
         var root = new TreeViewItem(-1, -1);
 
         root.AddChild(new AssetInfoTreeViewItem());
+
+        /*
         for(int i = 0; i < ContentDatabase.Assets;i++)
         {
             var info = ContentDatabase.Get()[i];
             var child = new AssetInfoTreeViewItem(info);
             root.AddChild(child);
         }
-        
+         */
+
         return root;
     }
 }

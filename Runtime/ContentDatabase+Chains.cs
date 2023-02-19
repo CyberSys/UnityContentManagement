@@ -1,16 +1,17 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Build.Pipeline;
 
 public partial class ContentDatabase : ScriptableObject
 {
-    public bool TryGetChain(string guid, out BundleInfo chain)
+    public bool TryGetBundle(ContentInfo.Group group, out IBundleInfo chain)
     {
-        chain = default;
+        chain = null;
 
-        foreach(var c in m_ContentInfo.Chains)
+        foreach (var c in m_ContentInfo.Bundles)
         {
-            if(c.AssetInfo.guid == guid)
+            if (c.groupName == group.name)
             {
                 chain = c;
                 return true;
@@ -19,62 +20,32 @@ public partial class ContentDatabase : ScriptableObject
 
         return false;
     }
-
-    public void GenerateChains(CompatibilityAssetBundleManifest manifest)
-    {
 #if UNITY_EDITOR
-        m_ContentInfo.Chains.Clear();
-
-        foreach (var guid in manifest.GetAllAssetBundles())
-        {
-            AssetInfo info;
-            if (TryGetAssetInfoByGUID(guid, out info))
-            {
-                var di = new BundleInfo();
-                di.AssetInfo = info;
-                di.CRC = manifest.GetAssetBundleCrc(guid);
-                var array = manifest.GetAllDependencies(info.guid);
-
-                for (int i = 0; i < array.Length; i++)
-                {
-                    if (TryGetAssetInfoByGUID(array[i], out AssetInfo asset_info2))
-                    {
-                        var new_dep = new BundleInfo();
-                        new_dep.AssetInfo = asset_info2;
-                        new_dep.CRC = manifest.GetAssetBundleCrc(asset_info2.guid);
-                        di.Dependencies.Add(new_dep);
-                    }
-                }
-
-                m_ContentInfo.Chains.Add(di);
-            }
-        }
-#endif
-    }
-
-    void RenameDependencyChains(Dictionary<string, string> dictionary)
+    public void GenerateBundlesInfo(CompatibilityAssetBundleManifest manifest, ContentInfo contentInfo, Dictionary<string, string> bundle_name_to_group_name)
     {
-#if UNITY_EDITOR
-        void Rename(BundleInfo info)
-        {
-            if (dictionary.ContainsKey(info.AssetInfo.guid))
-            {
-                info.Name = dictionary[info.AssetInfo.guid];
-            }
-            else
-            {
-                info.Name = "<unknown>";
-            }
-            for (int i = 0; i < info.Dependencies.Count; i++)
-            {
-                Rename(info.Dependencies[i]);
-            }
-        }
+        contentInfo.Bundles.Clear();
 
-        for (int i = 0; i < m_ContentInfo.Chains.Count; i++)
+        foreach (var name in manifest.GetAllAssetBundles())
         {
-            Rename(m_ContentInfo.Chains[i]);
+            var bundle = new BundleInfo();
+            bundle.name = name;
+            bundle.groupName = bundle_name_to_group_name[name];
+            bundle.CRC = manifest.GetAssetBundleCrc(name);
+
+            var deps = manifest.GetAllDependencies(name);
+
+            foreach (var dep_name in deps)
+            {
+                var dep_bundle = new DependencyBundleInfo();
+                dep_bundle.name = dep_name;
+                dep_bundle.groupName = bundle_name_to_group_name[name];
+                dep_bundle.CRC = manifest.GetAssetBundleCrc(dep_name);
+                bundle.Dependencies.Add(dep_bundle);
+            }
+
+            contentInfo.Bundles.Add(bundle);
         }
-#endif
     }
+#endif
+
 }

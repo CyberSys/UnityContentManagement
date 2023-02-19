@@ -32,7 +32,7 @@ public static class AssetInspectorGUI
             return;
         }
 
-        bool has_asset = ContentDatabase.Contains(selectedObject, out var info);
+        bool has_asset = ContentDatabase.Contains(selectedObject, out var group, out var info);
 
         if ((PrefabStageUtility.GetCurrentPrefabStage() != null && PrefabStageUtility.GetCurrentPrefabStage().mode == PrefabStage.Mode.InIsolation) && info != null && PrefabStageUtility.GetCurrentPrefabStage().assetPath == info.path)
         {
@@ -47,7 +47,7 @@ public static class AssetInspectorGUI
         if (has_asset)
         {
             ContentDatabase.UpdateAsset(selectedObject);
-            if (GUILayout.Button($"Exclude {asset_name} from Content Database"))
+            if (GUILayout.Button($"Exclude {asset_name} from Content Database ({group.name})"))
             {
                 ContentDatabase.RemoveAsset(selectedObject);
             }
@@ -62,11 +62,7 @@ public static class AssetInspectorGUI
         {
             if (GUILayout.Button($"Include {asset_name} in Content Database"))
             {
-                var error = ContentDatabase.AddAsset(selectedObject);
-                if (error != ContentDatabase.AssetError.NoError)
-                {
-                    Debug.LogWarning($"{asset_name} | {error}");
-                }
+                var error = ContentDatabase.AddAsset(ContentDatabase.Get().GetContentInfo().AddGroup(asset_name), selectedObject);
             }
         }
 
@@ -97,7 +93,7 @@ public static class AssetInspectorGUI
                 continue;
             }
 
-            bool has_asset = ContentDatabase.Contains(selectedObject, out var info);
+            bool has_asset = ContentDatabase.Contains(selectedObject, out var group, out var info);
 
             if (has_asset)
             {
@@ -113,9 +109,10 @@ public static class AssetInspectorGUI
         GUI.enabled = true;
         if (GUILayout.Button($"Include {not_added} assets in Content Database"))
         {
+            var group = ContentDatabase.Get().GetContentInfo().AddGroup("SharedAssets_"+ContentDatabase.Get().GetContentInfo().Groups.Count);
             for (int i = 0; i < selected.Length; i++)
             {
-                var error = ContentDatabase.AddAsset(selected[i]);
+                var error = ContentDatabase.AddAsset(group, selected[i]);
                 if (error != ContentDatabase.AssetError.NoError)
                 {
                     var asset_name = Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(selected[i]));
