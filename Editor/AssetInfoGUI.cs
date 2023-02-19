@@ -32,7 +32,7 @@ public static class AssetInspectorGUI
             return;
         }
 
-        bool has_asset = ContentDatabase.Contains(selectedObject, out var group, out var info);
+        bool has_asset = ContentDatabase.FindAsset(selectedObject, out var group, out var info);
 
         if ((PrefabStageUtility.GetCurrentPrefabStage() != null && PrefabStageUtility.GetCurrentPrefabStage().mode == PrefabStage.Mode.InIsolation) && info != null && PrefabStageUtility.GetCurrentPrefabStage().assetPath == info.path)
         {
@@ -93,7 +93,7 @@ public static class AssetInspectorGUI
                 continue;
             }
 
-            bool has_asset = ContentDatabase.Contains(selectedObject, out var group, out var info);
+            bool has_asset = ContentDatabase.FindAsset(selectedObject, out var group, out var info);
 
             if (has_asset)
             {

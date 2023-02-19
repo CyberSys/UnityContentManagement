@@ -31,7 +31,7 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
     [SerializeField]
     private string Extension = "bundle";
 
-    [Header("Force Rebuild <color=red>(slow!!)</color>")]
+    [Header("Force Rebuild (slow!!)")]
     [SerializeField]
     private bool ForceRebuild = true;
 
@@ -43,9 +43,9 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
     }
 
     [Header("Compression Mode")]
-    [Header("Uncompressed <color=green>(speed++)</color> <color=red>(size++)</color>")]
-    [Header("LZ4 <color=yellow>(speed+) (size-)</color>")]
-    [Header("LZMA <color=red>(speed--)</color> <color=green>(size--)")]
+    [Header("Uncompressed (speed++) (size++)")]
+    [Header("LZ4 (speed+) (size-)")]
+    [Header("LZMA (speed--) (size--)")]
     [SerializeField]
     private CompressionType Compression = CompressionType.Uncompressed;
 

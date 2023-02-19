@@ -134,8 +134,14 @@ public partial class ContentDatabase : ScriptableObject
         }
 
         public List<BundleInfo> Bundles = new List<BundleInfo>();
+
+        public List<string> CustomContentInfoPath = new List<string>();
+
+        [NonSerialized]
+        public List<ContentInfo> CustomContentInfo = new List<ContentInfo>();
     }
 
+    [HideInInspector]
     [SerializeField]
     private ContentInfo m_ContentInfo = new ContentInfo();
 
@@ -175,6 +181,21 @@ public partial class ContentDatabase : ScriptableObject
             if (File.Exists(ContentDBPath))
             {
                 JsonUtility.FromJsonOverwrite(File.ReadAllText(ContentDBPath), db.m_ContentInfo);
+
+                //load custom content info
+                if(db.m_ContentInfo.CustomContentInfoPath.Count > 0)
+                {
+                    foreach (var path in db.m_ContentInfo.CustomContentInfoPath)
+                    {
+                        try
+                        {
+                            var custom_Content = JsonUtility.FromJson<ContentInfo>(File.ReadAllText(path));
+                            db.m_ContentInfo.CustomContentInfo.Add(custom_Content);
+                            Log($"Detected custom content info {path}");
+                        }
+                        catch { LogError($"Detected custom content {path} read failed!"); }
+                    }
+                }
             }
             else
             {
@@ -182,12 +203,33 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 #endif
-
         db.hideFlags = HideFlags.DontSaveInBuild;
         return db;
     }
 
 #if UNITY_EDITOR
+
+    public void SelfCheck()
+    {
+        foreach(var group in m_ContentInfo.Groups)
+        {
+            if(group != null)
+            {
+                foreach(var asset in group.Assets)
+                {
+                    var error = CheckAsset(AssetDatabase.LoadMainAssetAtPath(asset.path), out var blob, out var blob1, out var blob2);
+
+                    if(error != AssetError.NoError)
+                    {
+                        group.Assets.Remove(asset);
+                        Debug.LogWarning($"Asset {asset.path} removed due error {error}");
+                    }
+                }
+            }
+        }
+    }
+
+
     public static void Save()
     {
         EditorUtility.SetDirty(Get());
@@ -379,7 +421,7 @@ public partial class ContentDatabase : ScriptableObject
         {
             return AssetError.GroupIsNull;
         }
-        if (!Contains(asset))
+        if (!FindAsset(asset))
         {
             var error = Get().CheckAsset(asset, out string guid, out string path, out Type type);
             var asset_name = Path.GetFileNameWithoutExtension(path);
@@ -464,10 +506,30 @@ public partial class ContentDatabase : ScriptableObject
                 }
             }
         }
+
+        //find in custom content
+        for (var custom_content_index = 0; custom_content_index < Get().m_ContentInfo.CustomContentInfo.Count; custom_content_index++)
+        {
+            for (var group_index = 0; group_index < Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups.Count; group_index++)
+            {
+                var group = Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups[group_index];
+
+                if (group == null)
+                    continue;
+
+                for (int i = 0; i < group.Assets.Count; i++)
+                {
+                    if (group.Assets[i].guid == asset_guid)
+                    {
+                        group.Assets.RemoveAt(i);
+                    }
+                }
+            }
+        }
     }
 
 #if UNITY_EDITOR
-    public static bool Contains(Object asset)
+    public static bool FindAsset(Object asset)
     {
         if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string guid, out long localId))
         {
@@ -488,11 +550,31 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
+        //find in custom content
+        for (var custom_content_index = 0; custom_content_index < Get().m_ContentInfo.CustomContentInfo.Count; custom_content_index++)
+        {
+            for (var group_index = 0; group_index < Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups.Count; group_index++)
+            {
+                var group = Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups[group_index];
+
+                if (group == null)
+                    continue;
+
+                for (int i = 0; i < group.Assets.Count; i++)
+                {
+                    if (group.Assets[i].guid == guid)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
         return false;
     }
 #endif
 
-    public static bool Contains(string guid)
+    public static bool FindAsset(string guid)
     {
         for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
         {
@@ -510,10 +592,30 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
+        //find in custom content
+        for (var custom_content_index = 0; custom_content_index < Get().m_ContentInfo.CustomContentInfo.Count; custom_content_index++)
+        {
+            for (var group_index = 0; group_index < Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups.Count; group_index++)
+            {
+                var group = Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups[group_index];
+
+                if (group == null)
+                    continue;
+
+                for (int i = 0; i < group.Assets.Count; i++)
+                {
+                    if (group.Assets[i].guid == guid)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
         return false;
     }
 
-    public static bool Exists(string guid, out ContentInfo.Group out_group)
+    public static bool FindAsset(string guid, out ContentInfo.Group out_group)
     {
         out_group = null;
         for (var a = 0; a < Get().m_ContentInfo.Groups.Count; a++)
@@ -533,11 +635,32 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
+        //find in custom content
+        for(var custom_content_index = 0; custom_content_index < Get().m_ContentInfo.CustomContentInfo.Count; custom_content_index++)
+        {
+            for (var group_index = 0; group_index < Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups.Count; group_index++)
+            {
+                var group = Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups[group_index];
+
+                if (group == null)
+                    continue;
+
+                for (int i = 0; i < group.Assets.Count; i++)
+                {
+                    if (group.Assets[i].guid == guid)
+                    {
+                        out_group = group;
+                        return true;
+                    }
+                }
+            }
+        }
+
         return false;
     }
 
 #if UNITY_EDITOR
-    public static bool Contains(Object asset, out ContentInfo.Group group, out AssetInfo info)
+    public static bool FindAsset(Object asset, out ContentInfo.Group group, out AssetInfo info)
     {
         info = null;
         group = null;
@@ -554,6 +677,26 @@ public partial class ContentDatabase : ScriptableObject
                         if (group.Assets[i].guid == guid)
                         {
                             info = group.Assets[i];
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            //find in custom content
+            for (var custom_content_index = 0; custom_content_index < Get().m_ContentInfo.CustomContentInfo.Count; custom_content_index++)
+            {
+                for (var group_index = 0; group_index < Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups.Count; group_index++)
+                {
+                    group = Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups[group_index];
+
+                    if (group == null)
+                        continue;
+
+                    for (int i = 0; i < group.Assets.Count; i++)
+                    {
+                        if (group.Assets[i].guid == guid)
+                        {
                             return true;
                         }
                     }
@@ -582,6 +725,26 @@ public partial class ContentDatabase : ScriptableObject
                 {
                     info = group.Assets[i];
                     return true;
+                }
+            }
+        }
+
+        //find in custom content
+        for (var custom_content_index = 0; custom_content_index < Get().m_ContentInfo.CustomContentInfo.Count; custom_content_index++)
+        {
+            for (var group_index = 0; group_index < Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups.Count; group_index++)
+            {
+                group = Get().m_ContentInfo.CustomContentInfo[custom_content_index].Groups[group_index];
+
+                if (group == null)
+                    continue;
+
+                for (int i = 0; i < group.Assets.Count; i++)
+                {
+                    if (group.Assets[i].guid == guid)
+                    {
+                        return true;
+                    }
                 }
             }
         }
