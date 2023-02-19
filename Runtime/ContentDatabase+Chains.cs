@@ -38,7 +38,7 @@ public partial class ContentDatabase : ScriptableObject
             {
                 var dep_bundle = new DependencyBundleInfo();
                 dep_bundle.name = dep_name;
-                dep_bundle.groupName = bundle_name_to_group_name[name];
+                dep_bundle.groupName = bundle_name_to_group_name[dep_name];
                 dep_bundle.CRC = manifest.GetAssetBundleCrc(dep_name);
                 bundle.Dependencies.Add(dep_bundle);
             }
