@@ -61,6 +61,10 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
     [SerializeField]
     private bool ClearContentDirectory = false;
 
+    [Header("[Experimental] Generate Preview Icons")]
+    [SerializeField]
+    private bool GenerateIcons = false;
+
     void ClearDirectory(string target_dir)
     {
         string[] files = Directory.GetFiles(target_dir);
@@ -222,6 +226,58 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
             }
 
             File.WriteAllText(ContentDBPath, JsonUtility.ToJson(m_ContentInfo, true));
+
+            if (GenerateIcons)
+            {
+                var p = Path.Combine(ContentFolder, "Icons");
+                if (!Directory.Exists(p))
+                {
+                    Directory.CreateDirectory(p);
+                }
+
+                AssetPreview.SetPreviewTextureCacheSize(2048);
+                foreach(var group in m_ContentInfo.Groups)
+                {
+                    if(group != null)
+                    {
+                        var g_p = Path.Combine(p, group.name);
+
+                        if (!Directory.Exists(g_p))
+                        {
+                            Directory.CreateDirectory(g_p);
+                        }
+
+                        int asset_index = 0;
+                        foreach(var asset in group.Assets)
+                        {
+                            if (asset != null)
+                            {
+                                var obj = AssetDatabase.LoadMainAssetAtPath(asset.path);
+                                var icon = AssetPreview.GetAssetPreview(obj);
+
+                                while (AssetPreview.IsLoadingAssetPreview(obj.GetInstanceID()))
+                                {
+                                    await Task.Yield();
+                                }
+
+
+                                if (icon != null)
+                                {
+                                    EditorUtility.DisplayProgressBar("Generating preview icons", "Processing " + asset.path, (float)asset_index / (float)group.Assets.Count);
+                                    File.WriteAllBytes(Path.Combine(g_p, asset.name + ".png"), icon.EncodeToPNG());
+                                }
+                                else
+                                {
+                                    Debug.LogWarning("icon is unavailable! -> "+asset.path);
+                                }
+                                await Task.Yield();
+                            }
+                        }
+                        await Task.Yield();
+                    }
+                }
+            }
+
             EditorUtility.ClearProgressBar();
         }
         catch (Exception ex)
