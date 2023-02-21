@@ -62,6 +62,8 @@ public class AssetInfo
         AssetLoadingError,
         AssetLoading,
         AssetLoaded,
+        AssetCaching,
+        AssetCached,
 
         SceneNotFound,
         SceneLoading,
@@ -70,6 +72,57 @@ public class AssetInfo
 
         InstantiatingError,
         Instantiated
+    }
+
+    [NonSerialized]
+    private bool StillCaching = false;
+
+    [NonSerialized]
+    private Object CachedAsset;
+
+    public void LoadAssetAndCache<T>(Action<Status, string, float, T> onState = null) where T : Object
+    {
+        if (!IsValid())
+        {
+            return;
+        }
+
+        if (!CachedAsset)
+        {
+            if (!StillCaching)
+            {
+                StillCaching = true;
+
+                ContentDatabase.LoadAsset(this, delegate (Status status, string name, float progress, T asset)
+                {
+                    if (status == Status.AssetLoaded)
+                    {
+                        CachedAsset = asset;
+                    }
+                    else
+                    {
+                        if (onState != null)
+                        {
+                            onState(status, name, progress, asset);
+                        }
+                    }
+                });
+            }
+            else
+            {
+                if (onState != null)
+                {
+                    onState(Status.AssetCaching, name, 0, null);
+                }
+            }
+        }
+        else
+        {
+            if (onState != null)
+            {
+                onState(Status.AssetCached, CachedAsset.name, 100, CachedAsset as T);
+            }
+        }
     }
 
     public void LoadAsset<T>(Action<Status, string, float, T> onState = null) where T : Object
@@ -87,7 +140,39 @@ public class AssetInfo
         {
             return;
         }
+
         ContentDatabase.Instantiate(this, onState);
+    }
+
+    public void InstantiateAndCache<T>(Action<Status, string, float, T> onState = null) where T : Object
+    {
+        if (!IsValid())
+        {
+            return;
+        }
+
+        LoadAssetAndCache<T>(delegate (Status status, string name, float progress, T asset)
+        {
+            if (status == Status.AssetCached)
+            {
+                T obj = null;
+
+                try
+                {
+                    obj = Object.Instantiate(CachedAsset as T);
+                }
+                catch
+                {
+                    if (onState != null) { onState(Status.InstantiatingError, name, 0, null); }
+                }
+
+                if (onState != null) { onState(Status.Instantiated, name, progress, obj); }
+            }
+            else
+            {
+                if(onState != null) { onState(status, name, progress, asset); }
+            }
+        });
     }
 
 #if UNITY_EDITOR
