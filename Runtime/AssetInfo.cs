@@ -98,6 +98,14 @@ public class AssetInfo
                     if (status == Status.AssetLoaded)
                     {
                         CachedAsset = asset;
+                        if (onState != null)
+                        {
+                            onState(Status.AssetLoaded, name, progress, asset);
+                        }
+                        if (onState != null)
+                        {
+                            onState(Status.AssetCached, name, progress, asset);
+                        }
                     }
                     else
                     {
