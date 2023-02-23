@@ -1,20 +1,50 @@
 using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 using UnityEngine.Build.Pipeline;
 
 public partial class ContentDatabase : ScriptableObject
 {
-    public bool TryGetBundle(ContentInfo.Group group, out IBundleInfo chain)
+    public bool TryGetBundle(ContentInfo.Group group, out IBundleInfo chain, out ContentInfo contentInfo)
     {
         chain = null;
+        contentInfo = null;
 
-        foreach (var c in m_ContentInfo.Bundles)
+        for(var i = 0; i < m_ContentInfo.Bundles.Count; i++)
         {
-            if (c.groupName == group.name)
+            var bundle = m_ContentInfo.Bundles[i];
+
+            if(bundle != null)
             {
-                chain = c;
-                return true;
+                if(bundle.groupName == group.name)
+                {
+                    contentInfo = m_ContentInfo;
+                    chain = bundle;
+                    return true;
+                }
+            }
+        }
+
+        //find in custom
+        for (var a = 0; a < m_ContentInfo.CustomContentInfo.Count; a++)
+        {
+            var custom = m_ContentInfo.CustomContentInfo[a];
+
+            if (custom != null)
+            {
+                for (var i = 0; i < custom.Bundles.Count; i++)
+                {
+                    var bundle = custom.Bundles[i];
+
+                    if (bundle != null)
+                    {
+                        if (bundle.groupName == group.name)
+                        {
+                            contentInfo = m_ContentInfo.CustomContentInfo[a];
+                            chain = bundle;
+                            return true;
+                        }
+                    }
+                }
             }
         }
 

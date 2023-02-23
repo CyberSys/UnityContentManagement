@@ -11,7 +11,6 @@ using System.IO;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using System.Threading.Tasks;
-using UnityEngine.Networking;
 
 #if UNITY_EDITOR
 public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithReport
@@ -54,6 +53,7 @@ public partial class ContentDatabase : ScriptableObject
 #endif
         }
 
+        [HideInInspector]
         public List<Group> Groups = new List<Group>(); 
 
         public bool TryGetGroup(string name, out Group out_group)
@@ -133,15 +133,19 @@ public partial class ContentDatabase : ScriptableObject
             return false;
         }
 
+        [HideInInspector]
         public List<BundleInfo> Bundles = new List<BundleInfo>();
 
+        [NonSerialized]
+        public string ContentDir = string.Empty;
+
+        [HideInInspector]
         public List<string> CustomContentInfoPath = new List<string>();
 
         [NonSerialized]
         public List<ContentInfo> CustomContentInfo = new List<ContentInfo>();
     }
 
-    [HideInInspector]
     [SerializeField]
     private ContentInfo m_ContentInfo = new ContentInfo();
 
@@ -172,28 +176,58 @@ public partial class ContentDatabase : ScriptableObject
                 AssetDatabase.CreateAsset(db, DBFile);
                 AssetDatabase.SaveAssetIfDirty(db);
             }
+
+            if (EditorApplication.isPlaying)
+            {
+                db.m_ContentInfo.ContentDir = ContentFolder;
+                //load custom content info
+                if (db.m_ContentInfo.CustomContentInfoPath.Count > 0)
+                {
+                    foreach (var path in db.m_ContentInfo.CustomContentInfoPath)
+                    {
+                        ContentInfo custom_Content = null;
+                        try
+                        {
+                            var customFullPath = Path.Combine(ContentFolder, path);
+                            var customDir = Path.GetDirectoryName(path);
+                            custom_Content = JsonUtility.FromJson<ContentInfo>(File.ReadAllText(customFullPath));
+                            custom_Content.ContentDir = customDir;
+                            db.m_ContentInfo.CustomContentInfo.Add(custom_Content);
+                            Log($"Detected custom content info {path} | dir {custom_Content.ContentDir}");
+                        }
+                        catch (Exception ex) { LogError($"Detected custom content {path} read failed! [{ex.Message}]"); }
+                        finally { Log($"Detected {custom_Content.Groups.Count} groups in custom content {path}"); }
+                    }
+                }
+            }
         }
 #endif
 #if !UNITY_EDITOR
         if (!db)
         {
             db = CreateInstance<ContentDatabase>();
+            db.m_ContentInfo.ContentDir = ContentFolder;
             if (File.Exists(ContentDBPath))
             {
                 JsonUtility.FromJsonOverwrite(File.ReadAllText(ContentDBPath), db.m_ContentInfo);
 
                 //load custom content info
-                if(db.m_ContentInfo.CustomContentInfoPath.Count > 0)
+                if (db.m_ContentInfo.CustomContentInfoPath.Count > 0)
                 {
                     foreach (var path in db.m_ContentInfo.CustomContentInfoPath)
                     {
+                        ContentInfo custom_Content = null;
                         try
                         {
-                            var custom_Content = JsonUtility.FromJson<ContentInfo>(File.ReadAllText(path));
+                            var customFullPath = Path.Combine(ContentFolder, path);
+                            var customDir = Path.GetDirectoryName(path);
+                            custom_Content = JsonUtility.FromJson<ContentInfo>(File.ReadAllText(customFullPath));
+                            custom_Content.ContentDir = customDir;
                             db.m_ContentInfo.CustomContentInfo.Add(custom_Content);
-                            Log($"Detected custom content info {path}");
+                            Log($"Detected custom content info {path} | dir {custom_Content.ContentDir}");
                         }
-                        catch { LogError($"Detected custom content {path} read failed!"); }
+                        catch (Exception ex) { LogError($"Detected custom content {path} read failed! [{ex.Message}]"); }
+                        finally { Log($"Detected {custom_Content.Groups.Count} groups in custom content {path}"); }
                     }
                 }
             }
@@ -203,6 +237,7 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 #endif
+
         db.hideFlags = HideFlags.DontSaveInBuild;
         return db;
     }
@@ -408,6 +443,23 @@ public partial class ContentDatabase : ScriptableObject
 
             if (asset_obj != null)
             {
+                bool isScene = asset_obj is SceneAsset;
+                ContentInfo.Group group = null;
+
+                if (isScene)
+                {
+                    group = Get().GetContentInfo().AddGroupOrFind($"{asset.name}");
+
+                    if (!group.IsSceneGroup())
+                    {
+                        group = Get().GetContentInfo().AddGroup($"{asset.name}_{Get().GetContentInfo().Groups.Count}");
+                    }
+                }
+                else
+                {
+                    group = Get().GetContentInfo().AddGroupOrFind($"{asset.name}_shared");
+                }
+
                 var dep_error = AddAsset(Get().GetContentInfo().AddGroupOrFind($"{asset.name}_shared"), asset_obj);
                 EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {dep} dependency of {asset.path}", (float)i / deps.Length);
                 i++;
@@ -792,6 +844,33 @@ public partial class ContentDatabase : ScriptableObject
                 }
             }
         }
+
+        //find in custom content
+        for (var a = 0; a < Get().m_ContentInfo.CustomContentInfo.Count; a++)
+        {
+            var customContent = Get().m_ContentInfo.CustomContentInfo[a];
+
+            if (customContent != null)
+            {
+                for (var b = 0; b < customContent.Groups.Count; b++)
+                {
+                    var group = customContent.Groups[b];
+
+                    if (group == null)
+                        continue;
+
+                    for (int i = 0; i < group.Assets.Count; i++)
+                    {
+                        if (group.Assets[i].name == name)
+                        {
+                            info = group.Assets[i];
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
         return false;
     }
 
@@ -812,6 +891,32 @@ public partial class ContentDatabase : ScriptableObject
                 {
                     info = group.Assets[i];
                     return true;
+                }
+            }
+        }
+
+        //find in custom content
+        for (var a = 0; a < Get().m_ContentInfo.CustomContentInfo.Count; a++)
+        {
+            var customContent = Get().m_ContentInfo.CustomContentInfo[a];
+
+            if (customContent != null)
+            {
+                for (var b = 0; b < customContent.Groups.Count; b++)
+                {
+                    var group = customContent.Groups[b];
+
+                    if (group == null)
+                        continue;
+
+                    for (int i = 0; i < group.Assets.Count; i++)
+                    {
+                        if (group.Assets[i].name == name && group.Assets[i].type == type.Name)
+                        {
+                            info = group.Assets[i];
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -838,6 +943,33 @@ public partial class ContentDatabase : ScriptableObject
                 }
             }
         }
+
+        //find in custom content
+        for (var a = 0; a < Get().m_ContentInfo.CustomContentInfo.Count; a++)
+        {
+            var customContent = Get().m_ContentInfo.CustomContentInfo[a];
+
+            if (customContent != null)
+            {
+                for (var b = 0; b < customContent.Groups.Count; b++)
+                {
+                    var group = customContent.Groups[b];
+
+                    if (group == null)
+                        continue;
+
+                    for (int i = 0; i < group.Assets.Count; i++)
+                    {
+                        if (group.Assets[i].path == path)
+                        {
+                            info = group.Assets[i];
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
         return false;
     }
 
@@ -858,6 +990,32 @@ public partial class ContentDatabase : ScriptableObject
                 {
                     info = group.Assets[i];
                     return true;
+                }
+            }
+        }
+
+        //find in custom content
+        for (var a = 0; a < Get().m_ContentInfo.CustomContentInfo.Count; a++)
+        {
+            var customContent = Get().m_ContentInfo.CustomContentInfo[a];
+
+            if (customContent != null)
+            {
+                for (var b = 0; b < customContent.Groups.Count; b++)
+                {
+                    var group = customContent.Groups[b];
+
+                    if (group == null)
+                        continue;
+
+                    for (int i = 0; i < group.Assets.Count; i++)
+                    {
+                        if (group.Assets[i].guid == guid)
+                        {
+                            info = group.Assets[i];
+                            return true;
+                        }
+                    }
                 }
             }
         }
