@@ -405,10 +405,14 @@ public partial class ContentDatabase : ScriptableObject
         {
 
             var asset_obj = AssetDatabase.LoadMainAssetAtPath(dep);
-            var dep_error = AddAsset(Get().GetContentInfo().AddGroupOrFind($"{asset.name}_shared"), asset_obj);
-            EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {dep} dependency of {asset.path}", (float)i/deps.Length);
-            i++;
-            await Task.Yield();
+
+            if (asset_obj != null)
+            {
+                var dep_error = AddAsset(Get().GetContentInfo().AddGroupOrFind($"{asset.name}_shared"), asset_obj);
+                EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {dep} dependency of {asset.path}", (float)i / deps.Length);
+                i++;
+                await Task.Yield();
+            }
         }
         EditorUtility.ClearProgressBar();
         onComplete?.Invoke();
