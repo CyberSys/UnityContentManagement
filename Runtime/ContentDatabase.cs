@@ -11,6 +11,7 @@ using System.IO;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using System.Threading.Tasks;
+using UnityEngine.Networking;
 
 #if UNITY_EDITOR
 public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithReport
@@ -133,24 +134,22 @@ public partial class ContentDatabase : ScriptableObject
             return false;
         }
 
-        [HideInInspector]
         public List<BundleInfo> Bundles = new List<BundleInfo>();
 
         [NonSerialized]
         public string ContentDir = string.Empty;
 
-        [HideInInspector]
         public List<string> CustomContentInfoPath = new List<string>();
 
         [NonSerialized]
         public List<ContentInfo> CustomContentInfo = new List<ContentInfo>();
     }
 
+    [HideInInspector]
     [SerializeField]
     private ContentInfo m_ContentInfo = new ContentInfo();
 
     public ContentInfo GetContentInfo() { return m_ContentInfo; }
-
 
     /* IO */
     public const string DBFolder = "Assets/ContentManagement/";
@@ -193,7 +192,7 @@ public partial class ContentDatabase : ScriptableObject
                             custom_Content = JsonUtility.FromJson<ContentInfo>(File.ReadAllText(customFullPath));
                             custom_Content.ContentDir = customDir;
                             db.m_ContentInfo.CustomContentInfo.Add(custom_Content);
-                            Log($"Detected custom content info {path} | dir {custom_Content.ContentDir}");
+                            Log($"Detected custom content info {path}");
                         }
                         catch (Exception ex) { LogError($"Detected custom content {path} read failed! [{ex.Message}]"); }
                         finally { Log($"Detected {custom_Content.Groups.Count} groups in custom content {path}"); }
@@ -224,7 +223,7 @@ public partial class ContentDatabase : ScriptableObject
                             custom_Content = JsonUtility.FromJson<ContentInfo>(File.ReadAllText(customFullPath));
                             custom_Content.ContentDir = customDir;
                             db.m_ContentInfo.CustomContentInfo.Add(custom_Content);
-                            Log($"Detected custom content info {path} | dir {custom_Content.ContentDir}");
+                            Log($"Detected custom content info {path}");
                         }
                         catch (Exception ex) { LogError($"Detected custom content {path} read failed! [{ex.Message}]"); }
                         finally { Log($"Detected {custom_Content.Groups.Count} groups in custom content {path}"); }

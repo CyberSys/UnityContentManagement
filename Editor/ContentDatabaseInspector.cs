@@ -14,7 +14,7 @@ public class ContentDatabaseInspector : Editor
     public override void OnInspectorGUI()
     {
         DrawDefaultInspector();
-        GUILayout.Space(150);
+        GUILayout.Space(50);
         if(GUILayout.Button("Build Content", GUILayout.Height(128)))
         {
             ContentDatabase.Get().BuildContent();

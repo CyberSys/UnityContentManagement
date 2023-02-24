@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using static AssetInfo;
 using Object = UnityEngine.Object;
@@ -128,9 +129,9 @@ public partial class ContentDatabase : ScriptableObject
         }
         else
         {
-            for(var i = 0; i < SceneManager.sceneCount; i++)
+            for (var i = 0; i < SceneManager.sceneCount; i++)
             {
-                if(SceneManager.GetSceneAt(i).name == name || SceneManager.GetSceneAt(i).path == name)
+                if (SceneManager.GetSceneAt(i).name == name || SceneManager.GetSceneAt(i).path == name)
                 {
                     CoroutineQueueExecute.PushToQueue(Coroutine_LoadScene(SceneManager.GetSceneAt(i).name, Event, mode, activateOnLoad));
                     return;
@@ -193,7 +194,7 @@ public partial class ContentDatabase : ScriptableObject
         }
     }
 
-    public static IEnumerator Coroutine_LoadBundle(AssetBundleManifest manifest, string folder, string bundleName, 
+    public static IEnumerator Coroutine_LoadBundle(AssetBundleManifest manifest, string folder, string bundleName,
         Action<Status, string, float, AssetBundle> Event)
     {
         //load main bundle
@@ -352,7 +353,7 @@ public partial class ContentDatabase : ScriptableObject
             }
         }
 
-        if(main_bundle != null)
+        if (main_bundle != null)
         {
             LogWarning($"Bundle {bundleName} ready! [Dependencies Ready: {dependency_ready}] [Missing dependencies: {dependency_missing}] [Total dependencies: {dependency_count}]");
 
@@ -378,7 +379,7 @@ public partial class ContentDatabase : ScriptableObject
             Log($"Asset {info.name} found in group {group.name}");
             if (Get().TryGetBundle(group, out bundle, out contentInfo))
             {
-                for(var dependency_index = 0; dependency_index < bundle.GetDependencies().Count; dependency_index++)
+                for (var dependency_index = 0; dependency_index < bundle.GetDependencies().Count; dependency_index++)
                 {
                     var dep = bundle.GetDependencies()[dependency_index] as IBundleInfo;
                     dependencies_list_to_load.Add(dep);
@@ -399,7 +400,7 @@ public partial class ContentDatabase : ScriptableObject
         //load main bundle
         AssetBundle main_bundle = null;
 
-        var main_bundle_path = Path.Combine(ContentFolder,contentInfo.ContentDir, bundle.GetName());
+        var main_bundle_path = Path.Combine(ContentFolder, contentInfo.ContentDir, bundle.GetName());
         if (!Get().loadedAssetBundles.TryGetValue(bundle, out LoadedAssetBundle loadedBundle))
         {
             if (File.Exists(main_bundle_path))
