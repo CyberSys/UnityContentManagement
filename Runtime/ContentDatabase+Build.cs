@@ -10,6 +10,7 @@ using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Pipeline;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithReport
 {
@@ -85,6 +86,14 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
     [ContextMenu("BuildContent")]
     public async void BuildContent()
     {
+
+        if (SceneManager.GetActiveScene().isDirty)
+        {
+            EditorUtility.DisplayDialog("ContentDatabase - Building", "Unable to start archiving! There are unsaved scenes!", "Ok");
+            return;
+        }
+
+
         AssetDatabase.SaveAssets();
 
         try
@@ -112,19 +121,19 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
 
                 if (group != null && group.Assets.Count > 0)
                 {
-                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.name}", $"...", (float)group_index / (float)m_ContentInfo.Groups.Count);
+                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.Name}", $"...", (float)group_index / (float)m_ContentInfo.Groups.Count);
                     var abb = new AssetBundleBuild();
 
                     if (m_BundleNamingMode == BundleNamingMode.GroupName)
                     {
-                        abb.assetBundleName = $"{group.name}.{Extension}";
+                        abb.assetBundleName = $"{group.Name}.{Extension}";
                     }
 
                     if (m_BundleNamingMode == BundleNamingMode.MD5Name)
                     {
                         using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
                         {
-                            byte[] inputBytes = Encoding.ASCII.GetBytes(group.name);
+                            byte[] inputBytes = Encoding.ASCII.GetBytes(group.Name);
                             byte[] hashBytes = md5.ComputeHash(inputBytes);
 
                             StringBuilder sb = new StringBuilder();
@@ -143,10 +152,10 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
 
                     if (m_BundleNamingMode == BundleNamingMode.ByGroupNameHashCode)
                     {
-                        abb.assetBundleName = $"{group.name.GetHashCode()}.{Extension}";
+                        abb.assetBundleName = $"{group.Name.GetHashCode()}.{Extension}";
                     }
 
-                    bundle_name_to_group_name.Add(abb.assetBundleName, group.name);
+                    bundle_name_to_group_name.Add(abb.assetBundleName, group.Name);
 
                     abb.addressableNames = new string[group.Assets.Count];
                     abb.assetNames = new string[group.Assets.Count];
@@ -161,7 +170,7 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
                             abb.addressableNames[asset_index] = asset.guid;
                         }
 
-                        EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.name}", $"Processing asset {asset.path}", (float)asset_index / (float)group.Assets.Count);
+                        EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.Name}", $"Processing asset {asset.path}", (float)asset_index / (float)group.Assets.Count);
 
                         await Task.Yield();
                     }
@@ -170,7 +179,7 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
                 }
                 else if (group != null)
                 {
-                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.name}", $"Skipping! No assets!", 0);
+                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.Name}", $"Skipping! No assets!", 0);
                 }
 
                 await Task.Yield();
@@ -240,7 +249,7 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
                 {
                     if(group != null)
                     {
-                        var g_p = Path.Combine(p, group.name);
+                        var g_p = Path.Combine(p, group.Name);
 
                         if (!Directory.Exists(g_p))
                         {
@@ -320,19 +329,19 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
 
                 if (group != null && group.Assets.Count > 0)
                 {
-                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.name}", $"...", (float)group_index / (float)temp_ContentInfo.Groups.Count);
+                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.Name}", $"...", (float)group_index / (float)temp_ContentInfo.Groups.Count);
                     var abb = new AssetBundleBuild();
 
                     if (m_BundleNamingMode == BundleNamingMode.GroupName)
                     {
-                        abb.assetBundleName = $"{group.name}.{Extension}";
+                        abb.assetBundleName = $"{group.Name}.{Extension}";
                     }
 
                     if (m_BundleNamingMode == BundleNamingMode.MD5Name)
                     {
                         using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
                         {
-                            byte[] inputBytes = Encoding.ASCII.GetBytes(group.name);
+                            byte[] inputBytes = Encoding.ASCII.GetBytes(group.Name);
                             byte[] hashBytes = md5.ComputeHash(inputBytes);
 
                             StringBuilder sb = new StringBuilder();
@@ -351,10 +360,10 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
 
                     if (m_BundleNamingMode == BundleNamingMode.ByGroupNameHashCode)
                     {
-                        abb.assetBundleName = $"{group.name.GetHashCode()}.{Extension}";
+                        abb.assetBundleName = $"{group.Name.GetHashCode()}.{Extension}";
                     }
 
-                    bundle_name_to_group_name.Add(abb.assetBundleName, group.name);
+                    bundle_name_to_group_name.Add(abb.assetBundleName, group.Name);
 
                     abb.addressableNames = new string[group.Assets.Count];
                     abb.assetNames = new string[group.Assets.Count];
@@ -369,7 +378,7 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
                             abb.addressableNames[asset_index] = asset.guid;
                         }
 
-                        EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.name}", $"Processing asset {asset.path}", (float)asset_index / (float)group.Assets.Count);
+                        EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.Name}", $"Processing asset {asset.path}", (float)asset_index / (float)group.Assets.Count);
 
                         await Task.Yield();
                     }
@@ -378,7 +387,7 @@ public partial class ContentDatabase : ScriptableObject, IPostprocessBuildWithRe
                 }
                 else if (group != null)
                 {
-                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.name}", $"Skipping! No assets!", 0);
+                    EditorUtility.DisplayProgressBar($"ContentDatabase -> Processing group {group.Name}", $"Skipping! No assets!", 0);
                 }
 
                 await Task.Yield();
