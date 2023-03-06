@@ -376,7 +376,7 @@ public partial class ContentDatabase : ScriptableObject
         IBundleInfo bundle;
         if (FindAsset(info.guid, out var group, out var asset))
         {
-            Log($"Asset {info.name} found in group {group.name}");
+            Log($"Asset {info.name} found in group {group.Name}");
             if (Get().TryGetBundle(group, out bundle, out contentInfo))
             {
                 for (var dependency_index = 0; dependency_index < bundle.GetDependencies().Count; dependency_index++)
@@ -387,7 +387,7 @@ public partial class ContentDatabase : ScriptableObject
             }
             else
             {
-                LogError($"Can't find bundle for group {group.name} of asset {info.name}");
+                LogError($"Can't find bundle for group {group.Name} of asset {info.name}");
                 yield break;
             }
         }

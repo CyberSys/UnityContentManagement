@@ -15,7 +15,7 @@ public partial class ContentDatabase : ScriptableObject
 
             if(bundle != null)
             {
-                if(bundle.groupName == group.name)
+                if(bundle.groupName == group.Name)
                 {
                     contentInfo = m_ContentInfo;
                     chain = bundle;
@@ -37,7 +37,7 @@ public partial class ContentDatabase : ScriptableObject
 
                     if (bundle != null)
                     {
-                        if (bundle.groupName == group.name)
+                        if (bundle.groupName == group.Name)
                         {
                             contentInfo = m_ContentInfo.CustomContentInfo[a];
                             chain = bundle;
@@ -50,6 +50,7 @@ public partial class ContentDatabase : ScriptableObject
 
         return false;
     }
+
 #if UNITY_EDITOR
     public void GenerateBundlesInfo(CompatibilityAssetBundleManifest manifest, ContentInfo contentInfo, Dictionary<string, string> bundle_name_to_group_name)
     {
@@ -61,15 +62,21 @@ public partial class ContentDatabase : ScriptableObject
             bundle.name = name;
             bundle.groupName = bundle_name_to_group_name[name];
             bundle.CRC = manifest.GetAssetBundleCrc(name);
+            bundle.Hash128 = manifest.GetAssetBundleHash(name).ToString();
 
             var deps = manifest.GetAllDependencies(name);
 
             foreach (var dep_name in deps)
             {
+                if(dep_name == name)
+                {
+                    continue;
+                }
                 var dep_bundle = new DependencyBundleInfo();
                 dep_bundle.name = dep_name;
                 dep_bundle.groupName = bundle_name_to_group_name[dep_name];
                 dep_bundle.CRC = manifest.GetAssetBundleCrc(dep_name);
+                dep_bundle.Hash128 = manifest.GetAssetBundleHash(dep_name).ToString();
                 bundle.Dependencies.Add(dep_bundle);
             }
 

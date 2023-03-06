@@ -115,7 +115,7 @@ public class ContentDatabaseEditor : EditorWindow
             }
         }
 
-        public ContentDatabaseGroupTreeViewItem(int id, ContentDatabase.ContentInfo.Group group) : base(id, 0, group.name)
+        public ContentDatabaseGroupTreeViewItem(int id, ContentDatabase.ContentInfo.Group group) : base(id, 0, group.Name)
         {
             this.group = group;
             UpdateIcon();
@@ -256,8 +256,18 @@ public class ContentDatabaseEditor : EditorWindow
         {
             DragAndDrop.PrepareStartDrag();
 
+            for(var i = 0; i < args.draggedItemIDs.Count; i++)
+            {
+                if(FindItem(args.draggedItemIDs[i], rootItem) is ContentDatabaseGroupTreeViewItem)
+                {
+                    return;
+                }
+            }
+
             var selected = args.draggedItemIDs.Select(id => FindItem(id, rootItem) as ContentDatabaseAssetInfoTreeViewItem);
+
             var items = new List<ContentDatabaseAssetInfoTreeViewItem>(selected);
+
             DragAndDrop.paths = items.Select(a => a.asset.path).ToArray();
 
             DragAndDrop.visualMode = items.Count > 0 ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
@@ -284,7 +294,7 @@ public class ContentDatabaseEditor : EditorWindow
                             error = ContentDatabase.AddAsset(group, asset);
                             if (error == ContentDatabase.AssetError.NoError)
                             {
-                                Window.ShowNotification(new GUIContent($"{asset.name} added in {group.name}"));
+                                Window.ShowNotification(new GUIContent($"{asset.name} added in {group.Name}"));
                             }
                             else
                             {
@@ -306,7 +316,7 @@ public class ContentDatabaseEditor : EditorWindow
 
                             if (added > 0)
                             {
-                                Window.ShowNotification(new GUIContent($"Added {added} assets in {group.name}"));
+                                Window.ShowNotification(new GUIContent($"Added {added} assets in {group.Name}"));
                             }
                         }
                     }
@@ -320,7 +330,7 @@ public class ContentDatabaseEditor : EditorWindow
                             error = ContentDatabase.AddAsset(group_item.group, asset);
                             if (error == ContentDatabase.AssetError.NoError)
                             {
-                                Window.ShowNotification(new GUIContent($"{asset.name} added in {group_item.group.name}"));
+                                Window.ShowNotification(new GUIContent($"{asset.name} added in {group_item.group.Name}"));
                             }
                             else if (error == ContentDatabase.AssetError.GroupOnlyForScenes)
                             {
@@ -347,7 +357,7 @@ public class ContentDatabaseEditor : EditorWindow
 
                             if (added > 0)
                             {
-                                Window.ShowNotification(new GUIContent($"Added {added} assets in {group_item.group.name}"));
+                                Window.ShowNotification(new GUIContent($"Added {added} assets in {group_item.group.Name}"));
                             }
                         }
                     }
@@ -369,7 +379,7 @@ public class ContentDatabaseEditor : EditorWindow
                         error = ContentDatabase.AddAsset(group, asset);
                         if (error == ContentDatabase.AssetError.NoError)
                         {
-                            Window.ShowNotification(new GUIContent($"{asset.name} moved in {group_item.group.name}"));
+                            Window.ShowNotification(new GUIContent($"{asset.name} moved in {group_item.group.Name}"));
                         }
                         else if (error == ContentDatabase.AssetError.GroupOnlyForScenes)
                         {
@@ -400,7 +410,7 @@ public class ContentDatabaseEditor : EditorWindow
 
                         if (added > 0)
                         {
-                            Window.ShowNotification(new GUIContent($"{added} assets moved in {group.name}"));
+                            Window.ShowNotification(new GUIContent($"{added} assets moved in {group.Name}"));
                         }
                     }
                 }
@@ -585,7 +595,7 @@ public class ContentDatabaseEditor : EditorWindow
                     if (!ContentDatabase.Get().GetContentInfo().TryGetGroup(args.newName, out var group))
                     {
                         var group_item = FindItem(args.itemID, rootItem) as ContentDatabaseGroupTreeViewItem;
-                        group_item.group.name = args.newName;
+                        group_item.group.Name = args.newName;
                         args.acceptedRename = true;
                         Reload();
                         ContentDatabase.Save();
@@ -594,7 +604,7 @@ public class ContentDatabaseEditor : EditorWindow
                     {
                         Window.ShowNotification(new GUIContent($"Group with that name already exists"), 3);
                         var group_item = FindItem(args.itemID, rootItem) as ContentDatabaseGroupTreeViewItem;
-                        group_item.group.name = args.newName+"_1";
+                        group_item.group.Name = args.newName+"_1";
                         args.acceptedRename = true;
                         Reload();
                         ContentDatabase.Save();
@@ -664,7 +674,7 @@ public class ContentDatabaseEditor : EditorWindow
                     menu.AddItem(new GUIContent("Build as Custom Content"), false, delegate
                     {
                         var group = (clickItem as ContentDatabaseGroupTreeViewItem).group;
-                        var folder = EditorUtility.SaveFolderPanel("Select folder for group", ContentDatabase.ContentFolder, group.name);
+                        var folder = EditorUtility.SaveFolderPanel("Select folder for group", ContentDatabase.ContentFolder, group.Name);
                         ContentDatabase.Get().BuildContentCustom(folder, new List<ContentDatabase.ContentInfo.Group>() { group });
                     });
 
@@ -676,9 +686,9 @@ public class ContentDatabaseEditor : EditorWindow
                     {
                         var item = FindItem(id, rootItem) as ContentDatabaseGroupTreeViewItem;
 
-                        if (ContentDatabase.Get().GetContentInfo().TryRemoveGroup(item.group.name))
+                        if (ContentDatabase.Get().GetContentInfo().TryRemoveGroup(item.group.Name))
                         {
-                            Window.ShowNotification(new GUIContent($"{item.group.name} removed"));
+                            Window.ShowNotification(new GUIContent($"{item.group.Name} removed"));
                         }
 
                         Reload();
@@ -721,7 +731,7 @@ public class ContentDatabaseEditor : EditorWindow
                         }
                         else if (item is ContentDatabaseGroupTreeViewItem)
                         {
-                            ContentDatabase.Get().GetContentInfo().TryRemoveGroup((item as ContentDatabaseGroupTreeViewItem).group.name);
+                            ContentDatabase.Get().GetContentInfo().TryRemoveGroup((item as ContentDatabaseGroupTreeViewItem).group.Name);
                         }
                     }
 

@@ -47,7 +47,7 @@ public static class AssetInspectorGUI
         if (has_asset)
         {
             ContentDatabase.UpdateAsset(selectedObject);
-            if (GUILayout.Button($"Exclude {asset_name} from Content Database ({group.name})"))
+            if (GUILayout.Button($"Exclude {asset_name} from Content Database ({group.Name})"))
             {
                 ContentDatabase.RemoveAsset(selectedObject);
             }

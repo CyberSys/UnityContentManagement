@@ -35,7 +35,10 @@ public partial class ContentDatabase : ScriptableObject
         [Serializable]
         public class Group
         {
-            public string name;
+            public string Name;
+
+            public List<string> Flags = new List<string>();
+
             public List<AssetInfo> Assets = new List<AssetInfo>();
 
 #if UNITY_EDITOR
@@ -68,7 +71,7 @@ public partial class ContentDatabase : ScriptableObject
 
                 var group = Groups[i];
 
-                if (group.name == name)
+                if (group.Name == name)
                 {
                     out_group = group;
                     return true;
@@ -84,7 +87,7 @@ public partial class ContentDatabase : ScriptableObject
             if(!TryGetGroup(name, out out_group))
             {
                 var group = new Group();
-                group.name = name;
+                group.Name = name;
                 Groups.Add(group);
                 return true;
             }
@@ -96,7 +99,7 @@ public partial class ContentDatabase : ScriptableObject
             if (!TryGetGroup(name, out var out_group))
             {
                 var group = new Group();
-                group.name = name;
+                group.Name = name;
                 Groups.Add(group);
                 return group;
             }
@@ -108,7 +111,7 @@ public partial class ContentDatabase : ScriptableObject
             if (!TryGetGroup(name, out var out_group))
             {
                 var group = new Group();
-                group.name = name;
+                group.Name = name;
                 Groups.Add(group);
                 return group;
             }
@@ -124,7 +127,7 @@ public partial class ContentDatabase : ScriptableObject
 
                 var group = Groups[i];
 
-                if (group.name == name)
+                if (group.Name == name)
                 {
                     Groups.RemoveAt(i);
                     return true;
@@ -432,40 +435,25 @@ public partial class ContentDatabase : ScriptableObject
 
     public static async void AddDependenciesForAsset(AssetInfo asset, Action onComplete = null)
     {
-        var deps = AssetDatabase.GetDependencies(asset.path, true);
-        EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {deps.Length} dependencies for {asset.path}", 0);
-        int i = 0;
-        foreach (var dep in deps)
+        if (FindAsset(asset.guid, out var out_group))
         {
-
-            var asset_obj = AssetDatabase.LoadMainAssetAtPath(dep);
-
-            if (asset_obj != null)
+            var deps = AssetDatabase.GetDependencies(asset.path, true);
+            EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {deps.Length} dependencies for {asset.path}", 0);
+            int i = 0;
+            foreach (var dep in deps)
             {
-                bool isScene = asset_obj is SceneAsset;
-                ContentInfo.Group group = null;
+                var asset_obj = AssetDatabase.LoadMainAssetAtPath(dep);
 
-                if (isScene)
+                if (asset_obj != null)
                 {
-                    group = Get().GetContentInfo().AddGroupOrFind($"{asset.name}");
-
-                    if (!group.IsSceneGroup())
-                    {
-                        group = Get().GetContentInfo().AddGroup($"{asset.name}_{Get().GetContentInfo().Groups.Count}");
-                    }
+                    var dep_error = AddAsset(Get().GetContentInfo().AddGroupOrFind($"{out_group.Name}_shared"), asset_obj);
+                    EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {dep} dependency of {asset.path}", (float)i / deps.Length);
+                    i++;
+                    await Task.Yield();
                 }
-                else
-                {
-                    group = Get().GetContentInfo().AddGroupOrFind($"{asset.name}_shared");
-                }
-
-                var dep_error = AddAsset(Get().GetContentInfo().AddGroupOrFind($"{asset.name}_shared"), asset_obj);
-                EditorUtility.DisplayProgressBar($"Adding dependencies for {asset.path}", $"Adding {dep} dependency of {asset.path}", (float)i / deps.Length);
-                i++;
-                await Task.Yield();
             }
+            EditorUtility.ClearProgressBar();
         }
-        EditorUtility.ClearProgressBar();
         onComplete?.Invoke();
     }
 
