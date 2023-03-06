@@ -184,7 +184,7 @@ public partial class ContentDatabase : ScriptableObject
         }
     }
 
-    public Dictionary<IBundleInfo, LoadedAssetBundle> loadedAssetBundles = new Dictionary<IBundleInfo, LoadedAssetBundle>();
+    public Dictionary<string, LoadedAssetBundle> loadedAssetBundles = new Dictionary<string, LoadedAssetBundle>();
 
     public static void UnloadAll(bool unloadObjects = false)
     {
@@ -401,7 +401,7 @@ public partial class ContentDatabase : ScriptableObject
         AssetBundle main_bundle = null;
 
         var main_bundle_path = Path.Combine(ContentFolder, contentInfo.ContentDir, bundle.GetName());
-        if (!Get().loadedAssetBundles.TryGetValue(bundle, out LoadedAssetBundle loadedBundle))
+        if (!Get().loadedAssetBundles.TryGetValue(bundle.GetName(), out LoadedAssetBundle loadedBundle))
         {
             if (File.Exists(main_bundle_path))
             {
@@ -431,7 +431,7 @@ public partial class ContentDatabase : ScriptableObject
                             Log($"Loading {main_bundle_path} finished [Load time: {start_load_time} ms]");
 
                             main_bundle = operation.assetBundle;
-                            Get().loadedAssetBundles.Add(bundle, new LoadedAssetBundle(bundle.GetName(), main_bundle));
+                            Get().loadedAssetBundles.Add(bundle.GetName(), new LoadedAssetBundle(bundle.GetName(), main_bundle));
                             try
                             {
                                 Event(Status.BundleLoaded, bundle.GetName(), operation.progress, main_bundle, bundle);
@@ -497,7 +497,7 @@ public partial class ContentDatabase : ScriptableObject
 
             var dependency_path = Path.Combine(ContentFolder, contentInfo.ContentDir, dependency_chain.GetName());
 
-            if (!Get().loadedAssetBundles.TryGetValue(dependency_chain, out LoadedAssetBundle loadedDependencyBundle))
+            if (!Get().loadedAssetBundles.TryGetValue(dependency_chain.GetName(), out LoadedAssetBundle loadedDependencyBundle))
             {
                 if (File.Exists(dependency_path))
                 {
@@ -528,7 +528,7 @@ public partial class ContentDatabase : ScriptableObject
 
                                 Log($"Loading {dependency_path} dependency of {bundle.GetName()} finished [Load time: {start_load_time} ms]");
 
-                                Get().loadedAssetBundles.Add(dependency_chain, new LoadedAssetBundle(dependency_chain.GetName(), operation.assetBundle));
+                                Get().loadedAssetBundles.Add(dependency_chain.GetName(), new LoadedAssetBundle(dependency_chain.GetName(), operation.assetBundle));
 
                                 try
                                 {
