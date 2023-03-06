@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 public interface IBundleInfo
 {
     public string GetName();
     public string GetGroupName();
     public uint GetCRC();
+    public string GetHash128();
     public List<DependencyBundleInfo> GetDependencies();
     public bool IsDependency();
+
 }
 
 [Serializable]
@@ -16,6 +19,7 @@ public class BundleInfo : IBundleInfo
     public string name;
     public string groupName;
     public uint CRC;
+    public string Hash128;
     public List<DependencyBundleInfo> Dependencies = new List<DependencyBundleInfo>();
 
     public override bool Equals(object obj)
@@ -28,6 +32,11 @@ public class BundleInfo : IBundleInfo
     public override int GetHashCode()
     {
         return name.GetHashCode();
+    }
+
+    string IBundleInfo.GetHash128()
+    {
+        return Hash128;
     }
 
     uint IBundleInfo.GetCRC()
@@ -62,6 +71,7 @@ public class DependencyBundleInfo : IBundleInfo
     public string name;
     public string groupName;
     public uint CRC;
+    public string Hash128;
 
     public override bool Equals(object obj)
     {
@@ -74,6 +84,11 @@ public class DependencyBundleInfo : IBundleInfo
     public override int GetHashCode()
     {
         return name.GetHashCode();
+    }
+
+    string IBundleInfo.GetHash128()
+    {
+        return Hash128;
     }
 
     uint IBundleInfo.GetCRC()
