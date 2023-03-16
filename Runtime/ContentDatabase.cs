@@ -238,8 +238,8 @@ public partial class ContentDatabase : ScriptableObject
                 Debug.LogError($"[ContentDatabase] {ContentDBPath} not found!");
             }
         }
+        db.Logging = !Bootstraper.Instance.HasCmd("-content_db_nologs");
 #endif
-
         db.hideFlags = HideFlags.DontSaveInBuild;
         return db;
     }

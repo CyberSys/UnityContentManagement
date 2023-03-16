@@ -110,6 +110,14 @@ public partial class ContentDatabase : ScriptableObject
                 return;
             }
 
+#if UNITY_EDITOR
+            if (Get().UseEditorDatabase)
+            {
+                CoroutineQueueExecute.PushToQueue(Coroutine_LoadScene(name, Event, mode, activateOnLoad));
+                return;
+            }
+#endif
+
             CoroutineQueueExecute.PushToQueue(Coroutine_LoadBundle(info,
             delegate (Status status, string name, float progress, AssetBundle bundle, IBundleInfo chain)
             {
